@@ -7,8 +7,10 @@
 
 The labels file is a CSV with a `file` column and any of these columns (blank = not scored):
 
-    view         iso | ort                      Thomas's call (what the picture is drawn in)
-    view_clear   y | n                          was it a clear case?
+    view         iso | ort        buildings, objects, scenes: isometric or straight-on? (blank for characters)
+    view_clear   y | n            was it a clear case?
+    facing       diagonal | cardinal | mixed    characters only: turned to a diagonal, or straight (front, back, side)?
+    facing_clear y | n            was it a clear case?
     subject      character | building | object | scene     (checked once the check exists)
     framing      isolated | subject_on_background | scene   (checked once the check exists)
     shadow       none | contact | cast          (checked once the check exists)
@@ -115,7 +117,7 @@ def main(argv=None) -> int:
         if not subset:
             continue
         c = Counter((s["truth"], s["said"]) for s in subset)
-        L += [f"## View check: {title}", ""] + table(c, ["iso", "ort"], ["iso", "ort", "cant"]) + [""]
+        L += [f"## View check (buildings, objects, scenes): {title}", ""] + table(c, ["iso", "ort"], ["iso", "ort", "cant"]) + [""]
     clear = [s for s in scored if s["clear"] == "y"]
     false_iso = [s for s in clear if s["truth"] == "ort" and s["said"] == "iso"]
     missed_iso = [s for s in clear if s["truth"] == "iso" and s["said"] != "iso"]
@@ -134,7 +136,7 @@ def main(argv=None) -> int:
         L += ["## Framing check", "", f"**Right on {right} of {len(fr)}.**", ""]
         L += table(c, ["isolated", "subject_on_background", "scene"], ["isolated", "subject_on_background", "scene", "cant"]) + [""]
         L += ["Wrong: " + (", ".join(f"{f[0][-8:-4]} (labelled {f[1]}, said {f[2]}; border {f[3]} plain, subject {f[4]})" for f in wrong) or "none"), ""]
-    for col, plan in (("subject", "slice B1"), ("shadow", "slice D1")):
+    for col, plan in (("subject", "slice B1"), ("facing", "slice C2"), ("shadow", "slice D1")):
         n = sum(1 for lab in labels if lab.get(col))
         L += [f"## {col.capitalize()} check", "", f"Not built yet ({plan}). {n} labelled pictures are waiting for it.", ""]
 
