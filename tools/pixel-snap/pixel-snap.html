@@ -51,6 +51,11 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
 .btn{display:inline-flex;align-items:center;justify-content:center}
 .drop{border:2px dashed var(--line);border-radius:10px;padding:10px 14px;color:var(--muted);font-size:.85rem}
 .drop.over{border-color:var(--accent);color:var(--fg)}
+.verdict{display:flex;flex-direction:column;gap:2px;border:1px solid var(--line);border-left-width:6px;border-radius:8px;padding:10px 12px;background:var(--bg)}
+.verdict strong{font-family:var(--font-display);font-size:1.05rem}
+.verdict span{font-size:.85rem;color:var(--muted);font-variant-numeric:tabular-nums}
+.verdict.iso{border-color:var(--warn)}
+.verdict.ortho{border-color:var(--accent)}
 .status{margin:0;font-size:.95rem}
 .status b{font-variant-numeric:tabular-nums}
 .status.warn{color:var(--warn)}
@@ -96,6 +101,10 @@ h2{font-family:var(--font-display);font-size:1rem;margin:0;font-weight:700}
       <button id="sampleBtn" type="button">Try the sample</button>
     </div>
     <div class="drop" id="drop">On a computer you can also drop an image here.</div>
+    <div class="verdict" id="verdict" role="status" hidden>
+      <strong id="verdictTitle"></strong>
+      <span id="verdictDetail"></span>
+    </div>
     <p class="status" id="status" role="status">Loading sample…</p>
   </section>
 
@@ -412,6 +421,64 @@ function mergeSimilar(rgba, tol) {
   }
 }
 
+/* ---------- which view is it drawn in? ---------- */
+
+const ISO_DIAGONAL_MIN = 0.35, ISO_HORIZONTAL_MAX = 0.12, ORTHO_AXIS_MIN = 0.45;
+
+function gaussBlur(a, w, h, sigma) {
+  const r = Math.floor(3 * sigma) + 1, k = new Float64Array(2 * r + 1);
+  let t = 0;
+  for (let i = -r; i <= r; i++) { k[i + r] = Math.exp(-0.5 * (i / sigma) ** 2); t += k[i + r]; }
+  for (let i = 0; i < k.length; i++) k[i] /= t;
+  const tmp = new Float64Array(w * h), out = new Float64Array(w * h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    let v = 0;
+    for (let i = -r; i <= r; i++) v += k[i + r] * a[y * w + Math.min(w - 1, Math.max(0, x + i))];
+    tmp[y * w + x] = v;
+  }
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    let v = 0;
+    for (let i = -r; i <= r; i++) v += k[i + r] * tmp[Math.min(h - 1, Math.max(0, y + i)) * w + x];
+    out[y * w + x] = v;
+  }
+  return out;
+}
+
+// Isometric art is built from straight lines at about 26-30 degrees with almost no horizontal edges.
+// Front-view and top-down art is built from horizontal and vertical lines. Round shapes (people,
+// animals) have neither, so they come back "unclear" instead of being forced into one of the two.
+function classifyView(rgba, w, h) {
+  const n = w * h, gxx = new Float64Array(n), gyy = new Float64Array(n), gxy = new Float64Array(n);
+  for (let c = 0; c < 4; c++) {
+    const ch = new Float64Array(n);
+    for (let i = 0; i < n; i++) ch[i] = rgba[i * 4 + c];
+    const b = gaussBlur(ch, w, h, 1.2);
+    for (let y = 1; y < h - 1; y++) for (let x = 1; x < w - 1; x++) {
+      const i = y * w + x, dx = (b[i + 1] - b[i - 1]) / 2, dy = (b[i + w] - b[i - w]) / 2;
+      gxx[i] += dx * dx; gyy[i] += dy * dy; gxy[i] += dx * dy;
+    }
+  }
+  const mag = new Float64Array(n);
+  let mx = 0;
+  for (let i = 0; i < n; i++) { mag[i] = Math.sqrt(gxx[i] + gyy[i]); if (mag[i] > mx) mx = mag[i]; }
+  if (!(mx > 0)) return { kind: 'unclear', horizontal: 0, vertical: 0, diagonal: 0 };
+  let tot = 0, H = 0, V = 0, D = 0;
+  for (let i = 0; i < n; i++) {
+    if (mag[i] <= 0.15 * mx) continue;
+    const line = ((Math.atan2(2 * gxy[i], gxx[i] - gyy[i]) * 90 / Math.PI) + 90 + 180) % 180;   // 0 = horizontal line
+    const dev = Math.abs(((line + 90) % 180) - 90);
+    tot += mag[i];
+    if (dev <= 6) H += mag[i];
+    if (dev >= 84) V += mag[i];
+    if (dev >= 20 && dev <= 38) D += mag[i];
+  }
+  const horizontal = H / tot, vertical = V / tot, diagonal = D / tot;
+  let kind = 'unclear';
+  if (diagonal >= ISO_DIAGONAL_MIN && horizontal <= ISO_HORIZONTAL_MAX) kind = 'isometric';
+  else if (horizontal + vertical >= ORTHO_AXIS_MIN) kind = 'orthogonal';
+  return { kind, horizontal, vertical, diagonal };
+}
+
 // Cached analysis so sliders do not redo the slow part.
 function analyse(data, W, H) {
   const ex = edgeProfile(data, W, H, 0), ey = edgeProfile(data, W, H, 1);
@@ -441,7 +508,8 @@ function rebuild(data, W, H, an, opts) {
   const before = countColors(res.rgba);
   let after = before;
   if (found && opts.colors > 0) after = quantize(res.rgba, opts.colors);
-  return { ...res, bx, by, px: dx.p, py: dy.p, found, raw, before, after, forced: !!opts.cell };
+  const view = found ? classifyView(res.rgba, res.w, res.h) : { kind: 'unclear', horizontal: 0, vertical: 0, diagonal: 0 };
+  return { ...res, bx, by, px: dx.p, py: dy.p, found, raw, before, after, forced: !!opts.cell, view };
 }
 
 /* ---------- sample picture (fake pixel art, like an AI image) ---------- */
@@ -540,8 +608,25 @@ function recompute() {
   if (r.forced) status('Using your pixel size of <b>' + fmt(parseFloat($('cell').value)) + '</b>. Result: <b>' + r.w + ' × ' + r.h + '</b> pixels.');
   else if (r.found) status('Found the grid. Each pixel in the image is about <b>' + fmt((r.px + r.py) / 2) + '</b> real pixels wide. Result: <b>' + r.w + ' × ' + r.h + '</b> pixels.');
   else status('No clear grid found. This image may already be true pixel size, or the blocks are too soft. Type a pixel size above to try your own.', true);
+  showVerdict(r);
   drawOriginal();
   showResult();
+}
+
+function showVerdict(r) {
+  const el = $('verdict'), v = r.view;
+  el.hidden = false;
+  el.className = 'verdict' + (v.kind === 'isometric' ? ' iso' : v.kind === 'orthogonal' ? ' ortho' : '');
+  const pct = x => Math.round(x * 100) + '%';
+  if (!r.found) {
+    $('verdictTitle').textContent = 'View: can\'t tell';
+    $('verdictDetail').textContent = 'No pixel grid was found, so the view was not checked.';
+    return;
+  }
+  $('verdictTitle').textContent = v.kind === 'isometric' ? 'View: isometric, not the straight-on style' :
+    v.kind === 'orthogonal' ? 'View: straight-on or top-down' : 'View: can\'t tell';
+  $('verdictDetail').textContent = (v.kind === 'unclear' ? 'No clear straight lines to judge by (common with people and animals). ' : '') +
+    'Edge strength on diagonal lines ' + pct(v.diagonal) + ', horizontal ' + pct(v.horizontal) + ', vertical ' + pct(v.vertical) + '.';
 }
 
 function useImageData(img, label) {

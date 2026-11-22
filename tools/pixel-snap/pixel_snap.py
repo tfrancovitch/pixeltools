@@ -16,6 +16,8 @@ Needs Python 3.9+, numpy and Pillow.
     python pixel_snap.py *.png --scale 8 -o out/     # many files, enlarged 8x for moodboards
     python pixel_snap.py picture.png --cell 12.5     # you tell it the pixel size
     python pixel_snap.py picture.png --colors 16     # also limit the palette
+    python pixel_snap.py *.png --skip-isometric      # leave out isometric pictures
+    python pixel_snap.py *.png --check-only          # just report which are isometric
 
 The method matches the browser version (pixel-snap.html) in this folder.
 """
@@ -29,7 +31,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-__all__ = ["analyse", "rebuild", "snap_image", "Analysis", "Result"]
+__all__ = ["analyse", "rebuild", "snap_image", "classify_view", "Analysis", "Result", "ViewVerdict"]
 
 
 # --------------------------------------------------------------------------
@@ -295,6 +297,73 @@ def quantize(rgba: np.ndarray, k: int) -> None:
     _apply_lut(rgba, lut)
 
 
+# --------------------------------------------------------------------------
+# Which view is it drawn in? (isometric or straight-on)
+# --------------------------------------------------------------------------
+
+ISO_DIAGONAL_MIN = 0.35    # share of edge strength on 22-38 degree lines
+ISO_HORIZONTAL_MAX = 0.12  # isometric art has almost no horizontal edges
+ORTHO_AXIS_MIN = 0.45      # share of edge strength on horizontal or vertical lines
+
+
+@dataclass
+class ViewVerdict:
+    kind: str              # "isometric", "orthogonal" or "unclear"
+    horizontal: float      # share of edge strength on horizontal lines
+    vertical: float        # ... on vertical lines
+    diagonal: float        # ... on 22-38 degree lines (the 2:1 / 30 degree isometric slopes)
+
+    def describe(self) -> str:
+        return (f"{self.kind} (diagonals {self.diagonal:.0%}, horizontals {self.horizontal:.0%}, "
+                f"verticals {self.vertical:.0%})")
+
+
+def _gauss(a: np.ndarray, s: float) -> np.ndarray:
+    r = int(3 * s) + 1
+    k = np.exp(-0.5 * (np.arange(-r, r + 1) / s) ** 2)
+    k /= k.sum()
+    h, w = a.shape
+    p = np.pad(a, r, mode="edge")
+    x = sum(k[i] * p[:, i:i + w] for i in range(2 * r + 1))
+    return sum(k[i] * x[i:i + h, :] for i in range(2 * r + 1))
+
+
+def classify_view(rgba: np.ndarray, sigma: float = 1.2) -> ViewVerdict:
+    """Tell isometric art from straight-on or top-down art, using the snapped sprite.
+
+    Isometric art is built from straight lines at about 26-30 degrees (the 2:1 pixel
+    slope) with almost no horizontal edges. Front-view and top-down art is built from
+    horizontal and vertical lines. Round or organic shapes (people, animals) have neither,
+    so they come back "unclear" instead of being forced into one of the two."""
+    chans = [rgba[..., c].astype(np.float64) for c in range(3)] + [rgba[..., 3].astype(np.float64)]
+    gxx = gyy = gxy = 0.0
+    for c in chans:
+        b = _gauss(c, sigma)
+        dx = np.zeros_like(b)
+        dy = np.zeros_like(b)
+        dx[:, 1:-1] = (b[:, 2:] - b[:, :-2]) / 2
+        dy[1:-1, :] = (b[2:, :] - b[:-2, :]) / 2
+        gxx, gyy, gxy = gxx + dx * dx, gyy + dy * dy, gxy + dx * dy
+    mag = np.sqrt(gxx + gyy)
+    if mag.max() <= 0:
+        return ViewVerdict("unclear", 0.0, 0.0, 0.0)
+    keep = mag > 0.15 * mag.max()
+    line = (np.degrees(0.5 * np.arctan2(2 * gxy, gxx - gyy)) + 90) % 180   # 0 = horizontal line
+    dev = np.abs(((line[keep] + 90) % 180) - 90)                           # 0..90 away from horizontal
+    wgt = mag[keep]
+    tot = wgt.sum()
+    horiz = float(wgt[dev <= 6].sum() / tot)
+    vert = float(wgt[dev >= 84].sum() / tot)
+    diag = float(wgt[(dev >= 20) & (dev <= 38)].sum() / tot)
+    if diag >= ISO_DIAGONAL_MIN and horiz <= ISO_HORIZONTAL_MAX:
+        kind = "isometric"
+    elif horiz + vert >= ORTHO_AXIS_MIN:
+        kind = "orthogonal"
+    else:
+        kind = "unclear"
+    return ViewVerdict(kind, horiz, vert, diag)
+
+
 @dataclass
 class Analysis:
     ex: np.ndarray
@@ -314,6 +383,7 @@ class Result:
     found: bool
     colours_raw: int
     colours: int
+    view: ViewVerdict
 
     @property
     def size(self) -> tuple[int, int]:
@@ -353,7 +423,8 @@ def rebuild(rgba: np.ndarray, an: Analysis, cell: float | None = None,
         merge_similar(out, 14.0)
         if colours > 0:
             quantize(out, colours)
-    return Result(out, bx, by, dx.p, dy.p, found, raw, count_colours(out))
+    view = classify_view(out) if found else ViewVerdict("unclear", 0.0, 0.0, 0.0)
+    return Result(out, bx, by, dx.p, dy.p, found, raw, count_colours(out), view)
 
 
 def snap_image(img: Image.Image, cell: float | None = None, follow: bool = True,
@@ -374,6 +445,8 @@ def main(argv=None) -> int:
     ap.add_argument("--cell", type=float, help="pixel size in the original, if you want to override auto-detection")
     ap.add_argument("--colors", "--colours", dest="colours", type=int, default=0, help="limit the palette to this many colours")
     ap.add_argument("--no-follow", action="store_true", help="assume a perfectly straight grid instead of following wobbles")
+    ap.add_argument("--skip-isometric", action="store_true", help="do not save pictures that look isometric (for when you need straight-on art)")
+    ap.add_argument("--check-only", action="store_true", help="only report the view (isometric / orthogonal / unclear); save nothing")
     ap.add_argument("--scale", type=int, default=1, help="enlarge the saved picture by this whole number, without blur")
     args = ap.parse_args(argv)
 
@@ -389,6 +462,11 @@ def main(argv=None) -> int:
             status = 1
             continue
         w, h = res.size
+        view = res.view.kind.upper()
+        if args.check_only or (args.skip_isometric and res.view.kind == "isometric"):
+            why = "check only" if args.check_only else "skipped, because it is isometric"
+            print(f"[{view}] {path}: {res.view.describe()}; {w}x{h} pixels; not saved ({why})")
+            continue
         out = Image.fromarray(res.rgba, "RGBA")
         if args.scale > 1:
             out = out.resize((w * args.scale, h * args.scale), Image.NEAREST)
@@ -403,7 +481,7 @@ def main(argv=None) -> int:
         else:
             note = "NO CLEAR GRID FOUND (image may already be true size; try --cell)"
             status = status or 2
-        print(f"{path} -> {dest}: {w}x{h} pixels, {res.colours} colours, {note}")
+        print(f"[{view}] {path} -> {dest}: {w}x{h} pixels, {res.colours} colours, {note}; {res.view.describe()}")
     return status
 
 

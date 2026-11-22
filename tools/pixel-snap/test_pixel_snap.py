@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 
 import numpy as np
-from PIL import Image, ImageFilter
+from PIL import Image, ImageDraw, ImageFilter
 
 import pixel_snap
 
@@ -43,6 +43,58 @@ def make_fake(sprite, cell, blur=1.0, noise=5, jpeg=None, seed=1):
 def wrong_cells(res, sprite, tol=40):
     got = res.rgba[..., :3].astype(int)
     return int((np.abs(got - sprite.astype(int)).sum(axis=2) > tol).sum())
+
+
+# ---- drawn scenes with a known view, for the isometric check -------------------------
+
+def _shade(c, f):
+    return tuple(int(min(255, v * f)) for v in c)
+
+
+def scene(kind, seed):
+    """128x128 pixel-art scene: 'iso' (2:1 isometric blocks on a diamond floor),
+    'front' (houses seen straight on), 'top' (rectangles seen from above) or 'blobs'."""
+    rng = np.random.default_rng(seed)
+    col = lambda: tuple(int(v) for v in rng.integers(40, 230, 3))
+    w = h = 128
+    if kind == "iso":
+        im = Image.new("RGB", (w, h), (200, 220, 200)); d = ImageDraw.Draw(im)
+        for gy in range(-4, 10):
+            for gx in range(-4, 10):
+                cx, cy = w // 2 + (gx - gy) * 8, 20 + (gx + gy) * 4
+                d.polygon([(cx, cy), (cx + 8, cy + 4), (cx, cy + 8), (cx - 8, cy + 4)],
+                          fill=(170, 190, 170) if (gx + gy) % 2 else (150, 175, 150))
+        for _ in range(7):
+            s_, hg = int(rng.integers(3, 8)), int(rng.integers(3, 14))
+            cx, cy, c = int(rng.integers(30, w - 30)), int(rng.integers(30, h - 40)), col()
+            d.polygon([(cx - 2 * s_, cy + s_), (cx, cy + 2 * s_), (cx, cy + 2 * s_ + hg), (cx - 2 * s_, cy + s_ + hg)], fill=_shade(c, .7))
+            d.polygon([(cx + 2 * s_, cy + s_), (cx, cy + 2 * s_), (cx, cy + 2 * s_ + hg), (cx + 2 * s_, cy + s_ + hg)], fill=_shade(c, .5))
+            d.polygon([(cx, cy), (cx + 2 * s_, cy + s_), (cx, cy + 2 * s_), (cx - 2 * s_, cy + s_)], fill=c)
+    elif kind == "front":
+        im = Image.new("RGB", (w, h), (150, 200, 240)); d = ImageDraw.Draw(im)
+        d.rectangle([0, h - 24, w, h], fill=(90, 160, 80))
+        for _ in range(4):
+            bw, bh = int(rng.integers(22, 40)), int(rng.integers(18, 34))
+            x, y, c = int(rng.integers(4, w - bw - 4)), h - 24 - bh, col()
+            d.rectangle([x, y, x + bw, y + bh], fill=c)
+            d.polygon([(x - 3, y), (x + bw + 3, y), (x + bw // 2, y - int(rng.choice([bw // 4, bw // 2])))], fill=_shade(c, .6))
+            d.rectangle([x + bw // 2 - 3, y + bh - 12, x + bw // 2 + 3, y + bh], fill=(60, 40, 30))
+    elif kind == "top":
+        im = Image.new("RGB", (w, h), (110, 170, 90)); d = ImageDraw.Draw(im)
+        for _ in range(14):
+            x, y, a, b = int(rng.integers(0, w - 30)), int(rng.integers(0, h - 30)), int(rng.integers(8, 28)), int(rng.integers(8, 28))
+            d.rectangle([x, y, x + a, y + b], fill=col())
+    else:
+        im = Image.new("RGB", (w, h), (230, 225, 215)); d = ImageDraw.Draw(im)
+        for _ in range(8):
+            x, y, a, b = int(rng.integers(10, w - 40)), int(rng.integers(10, h - 40)), int(rng.integers(10, 34)), int(rng.integers(10, 34))
+            d.ellipse([x, y, x + a, y + b], fill=col())
+    return np.array(im)
+
+
+def view_of(kind, seed):
+    fake = make_fake(scene(kind, seed), 7 + 0.37 * (seed % 3), 0.9, 4, 70 if seed % 2 else None)
+    return pixel_snap.snap_image(fake).view.kind
 
 
 class SnapTests(unittest.TestCase):
@@ -112,6 +164,31 @@ class SnapTests(unittest.TestCase):
         self.assertEqual(res.size, (20, 20))
         self.assertTrue((res.rgba[:5, :5, 3] == 0).all())
         self.assertTrue((res.rgba[6:, 6:, 3] == 255).all())
+
+
+    def test_isometric_art_is_recognised(self):
+        for seed in range(6):
+            with self.subTest(seed=seed):
+                self.assertEqual(view_of("iso", seed), "isometric")
+
+    def test_straight_on_and_round_art_is_never_called_isometric(self):
+        for kind in ("front", "top", "blobs"):
+            for seed in range(6):
+                with self.subTest(kind=kind, seed=seed):
+                    self.assertNotEqual(view_of(kind, seed), "isometric")
+
+    def test_front_view_houses_are_called_orthogonal(self):
+        kinds = [view_of("front", s) for s in range(6)]
+        self.assertGreaterEqual(kinds.count("orthogonal"), 5)   # top-down scenes often say "unclear"; that is allowed
+
+    def test_skip_isometric_option(self):
+        with tempfile.TemporaryDirectory() as d:
+            iso, flat = Path(d) / "iso.png", Path(d) / "flat.png"
+            make_fake(scene("iso", 1), 8.3, 0.9, 4).save(iso)
+            make_fake(scene("front", 1), 8.3, 0.9, 4).save(flat)
+            self.assertEqual(pixel_snap.main([str(iso), str(flat), "--skip-isometric", "-o", str(Path(d) / "out")]), 0)
+            names = sorted(p.name for p in (Path(d) / "out").iterdir())
+            self.assertEqual(names, ["flat_snapped.png"])
 
     def test_command_line(self):
         sprite = make_sprite(32, 32)
