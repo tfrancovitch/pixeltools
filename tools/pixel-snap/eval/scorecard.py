@@ -43,7 +43,7 @@ def run_one(path: str) -> dict:
         res = pixel_snap.snap_image(Image.open(path))
         return {
             "ok": True,
-            "found": bool(res.found), "grid_status": res.grid_status, "flatness": None if res.flatness is None else round(res.flatness, 3),
+            "found": bool(res.found), "grid_status": res.grid_status, "subject": "cant" if res.subject.kind == "unclear" else res.subject.kind, "flatness": None if res.flatness is None else round(res.flatness, 3),
             "px": round(res.px, 2), "py": round(res.py, 2),
             "sprite_w": res.size[0], "sprite_h": res.size[1],
             "view": VIEW_NAMES[res.view.kind],
@@ -54,7 +54,7 @@ def run_one(path: str) -> dict:
             "seconds": round(time.time() - t0, 1),
         }
     except Exception as exc:  # report it, keep going
-        return {"ok": False, "error": str(exc)[:80], "found": False, "view": "cant", "framing": "cant", "seconds": round(time.time() - t0, 1)}
+        return {"ok": False, "error": str(exc)[:80], "found": False, "view": "cant", "framing": "cant", "subject": "cant", "seconds": round(time.time() - t0, 1)}
 
 
 def find_images(folder: Path) -> dict[str, Path]:
@@ -139,7 +139,20 @@ def main(argv=None) -> int:
         L += ["## Framing check", "", f"**Right on {right} of {len(fr)}.**", ""]
         L += table(c, ["isolated", "subject_on_background", "scene"], ["isolated", "subject_on_background", "scene", "cant"]) + [""]
         L += ["Wrong: " + (", ".join(f"{f[0][-8:-4]} (labelled {f[1]}, said {f[2]}; border {f[3]} plain, subject {f[4]})" for f in wrong) or "none"), ""]
-    for col, plan in (("subject", "slice B1"), ("facing", "slice C2"), ("shadow", "slice D1")):
+    # ---- subject -----------------------------------------------------------------
+    sj = [(lab["file"], lab["subject"], res.get("subject", "cant")) for lab, res in zip(labels, results) if lab.get("subject")]
+    if sj:
+        c = Counter((t, said) for _, t, said in sj)
+        right = sum(1 for _, t, said in sj if t == said)
+        classes = ["character", "building", "object", "scene"]
+        present = [k for k in classes if any(t == k for _, t, _ in sj)]
+        L += ["## Subject check (character / building / scene)", "", f"**Right on {right} of {len(sj)}.**", ""]
+        L += table(c, present, ["character", "building", "object", "scene", "cant"]) + [""]
+        bad = [f for f in sj if f[1] != f[2]]
+        L += ["Wrong or unsure: " + (", ".join(f"{f[0][-8:-4]} (labelled {f[1]}, said {f[2]})" for f in bad) or "none"), ""]
+        bc = [f for f in sj if f[1] == "building" and f[2] == "character"]
+        L += [f"**Buildings called characters: {len(bc)}**" + (": " + ", ".join(f[0][-8:-4] for f in bc) if bc else ""), ""]
+    for col, plan in (("facing", "slice C2"), ("shadow", "slice D1")):
         n = sum(1 for lab in labels if lab.get(col))
         L += [f"## {col.capitalize()} check", "", f"Not built yet ({plan}). {n} labelled pictures are waiting for it.", ""]
 
@@ -148,7 +161,7 @@ def main(argv=None) -> int:
     # per-picture detail next to the report (ignored by git)
     detail = args.out.with_name("last_run.csv")
     with open(detail, "w", newline="", encoding="utf-8") as f:
-        keys = ["file", "found", "grid_status", "flatness", "px", "py", "sprite_w", "sprite_h", "view", "diag", "horiz", "vert", "framing", "border_plain", "subject_share", "seconds"]
+        keys = ["file", "found", "grid_status", "subject", "flatness", "px", "py", "sprite_w", "sprite_h", "view", "diag", "horiz", "vert", "framing", "border_plain", "subject_share", "seconds"]
         w = csv.writer(f)
         w.writerow(["file", "label_view", "label_clear"] + keys[1:])
         for lab, res in zip(labels, results):

@@ -34,10 +34,12 @@ from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # so tuning.py is found even in python -I
 import framing as F  # noqa: E402
+import subject as SUBJ  # noqa: E402
 import tuning as T  # noqa: E402
 
-__all__ = ["analyse", "rebuild", "snap_image", "classify_view", "Analysis", "Result", "ViewVerdict", "Framing"]
+__all__ = ["analyse", "rebuild", "snap_image", "classify_view", "Analysis", "Result", "ViewVerdict", "Framing", "classify_subject"]
 Framing = F.Framing
+classify_subject = SUBJ.classify_subject
 
 
 # --------------------------------------------------------------------------
@@ -501,6 +503,7 @@ class Result:
     transparent: bool = False  # True when the background was made transparent
     grid_status: str = "found" # "found", "weak", "none" or "manual"
     grid_note: str = ""
+    subject: "SUBJ.SubjectVerdict | None" = None   # character / building / scene / unclear
     flatness: float | None = None   # how flat the blocks are inside (see cell_flatness); None when nothing was snapped
 
     @property
@@ -587,7 +590,7 @@ def rebuild(rgba: np.ndarray, an: Analysis, cell: float | None = None,
     removed = False
     if transparent and found and framing.kind == "isolated":
         removed = F.remove_background(out) > 0
-    return Result(out, bx, by, dx.p, dy.p, found, raw, count_colours(out), view, framing, removed, status, note, flat)
+    return Result(out, bx, by, dx.p, dy.p, found, raw, count_colours(out), view, framing, removed, status, note, SUBJ.classify_subject(framing), flat)
 
 
 def snap_image(img: Image.Image, cell: float | None = None, follow: bool = True,
@@ -626,14 +629,17 @@ def main(argv=None) -> int:
             status = 1
             continue
         w, h = res.size
-        view = res.view.kind.upper()
-        if args.check_only or (args.skip_isometric and res.view.kind == "isometric"):
+        tag = res.subject.kind.upper()
+        is_character = res.subject.kind == "character"
+        # characters are judged on which way they face, not on isometric vs orthographic (not built yet)
+        view_text = "facing: not checked yet" if is_character else res.view.describe()
+        if args.check_only or (args.skip_isometric and res.view.kind == "isometric" and not is_character):
             why = "check only" if args.check_only else "skipped, because it is isometric"
-            print(f"[{view}] {path}: {res.view.describe()}; {w}x{h} pixels; not saved ({why})")
+            print(f"[{tag}] {path}: {res.subject.describe()}; {view_text}; {w}x{h} pixels; not saved ({why})")
             continue
         if res.grid_status == "none":
             # nothing was snapped; a copy of the original under a "snapped" name would only mislead
-            print(f"[{view}] {path}: NOT SAVED. {res.grid_note}. {res.view.describe()}; framing {res.framing.kind}")
+            print(f"[{tag}] {path}: NOT SAVED. {res.grid_note}. {res.subject.describe()}")
             status = status or 2
             continue
         bg_note = ""
@@ -650,7 +656,7 @@ def main(argv=None) -> int:
             dest = folder / f"{path.stem}_snapped.png"
         out.save(dest)
         note = f"pixel size {res.px:.2f} x {res.py:.2f}" + (" (WEAK grid: check the result)" if res.grid_status == "weak" else "")
-        print(f"[{view}] {path} -> {dest}: {w}x{h} pixels, {res.colours} colours, {note}; {res.view.describe()}; framing {res.framing.kind}{bg_note}")
+        print(f"[{tag}] {path} -> {dest}: {w}x{h} pixels, {res.colours} colours, {note}; {view_text}; framing {res.framing.kind}{bg_note}")
     return status
 
 

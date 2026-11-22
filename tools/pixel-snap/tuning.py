@@ -56,3 +56,11 @@ FLAT_STRONG = 0.90             # cell flatness (share of colour variation the gr
 FLAT_NONE = 0.72               # below this the "blocks" are not flat inside: painted or smooth art, no usable grid
                                # (batch 1: sprites 0.90-1.00, median 0.96; painted landscapes 0.81-0.84; blurry pixel scene 0.75;
                                #  smooth anime or sketch 0.68-0.70)
+
+# ---- subject check: character / building / scene (slice B1) -------------------------
+# Set from batch 1: 86 isolated characters, 3 isolated isometric buildings (0088, 0089, 0091).
+# Only 3 buildings, so these are provisional: batch 2 and the object tuning batch must confirm them.
+SUBJECT_BUILDING_ASPECT_MAX = 1.3   # isometric buildings are roughly square (batch 1: 0.88-1.17)
+SUBJECT_BUILDING_BASE_MAX = 0.05    # bottom row width / widest row: a diamond footprint is pointed (0.00-0.02); characters 0.03 and up, median 0.36
+SUBJECT_BUILDING_TOP_MAX = 0.70     # top quarter width / middle width: roof narrower than the body (0.51-0.65); characters median 0.92
+SUBJECT_CHARACTER_ASPECT_MIN = 1.4  # tall figures (batch 1: 83 of 86 characters are 1.5 or taller)

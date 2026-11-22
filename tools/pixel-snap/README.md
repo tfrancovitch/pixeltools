@@ -22,9 +22,20 @@ python pixel_snap.py *.png --skip-isometric       # convert everything except is
 python pixel_snap.py sprite.png --transparent     # also make the plain background transparent
 ```
 
-Every line of output starts with the verdict: `[ISOMETRIC]`, `[ORTHOGONAL]` or `[UNCLEAR]`.
+Every line of output starts with what the picture is: `[CHARACTER]`, `[BUILDING]`, `[SCENE]` or `[UNCLEAR]`. For anything that is not a character, the line also gives the view (isometric, orthogonal or unclear). Characters are judged on which way they face, not on isometric or orthogonal; that check is not built yet, so the line says so.
 
 From Python code: `pixel_snap.snap_image(PIL_image)` returns a `Result` whose `.rgba` is the sprite.
+
+## What is it? (character, building, scene)
+
+The first question the tool answers, from the shape of the subject:
+
+- **Scene**: the picture's border is busy (a whole landscape or village), not a lone sprite on a plain background.
+- **Building**: a lone subject that is roughly square, with a pointed bottom (the diamond footprint of an isometric base) and a roof narrower than the body.
+- **Character**: a lone subject at least 1.4 times as tall as wide.
+- **Unclear**: anything else. A chibi character (nearly square), an object, or a front-view building with a flat base lands here, and the report says so. "Object" is not a category yet; it needs real examples.
+
+On the 102 test pictures: right on 98. No building was called a character. The misses are two chibi characters (nearly square, so "unclear") and two subjects standing on a full painted background (called "scene"). The building rule was set from only three isometric buildings, so it is provisional until more examples arrive.
 
 ## How sure is the grid? (clear, weak, none)
 
