@@ -76,3 +76,20 @@ SUBJECT_BUILDING_ASPECT_MAX = 1.3   # isometric buildings are roughly square (ba
 SUBJECT_BUILDING_BASE_MAX = 0.05    # bottom row width / widest row: a diamond footprint is pointed (0.00-0.02); characters 0.03 and up, median 0.36
 SUBJECT_BUILDING_TOP_MAX = 0.70     # top quarter width / middle width: roof narrower than the body (0.51-0.65); characters median 0.92
 SUBJECT_CHARACTER_ASPECT_MIN = 1.4  # tall figures (batch 1: 83 of 86 characters are 1.5 or taller)
+
+# ---- ground shadows (slice D1) ------------------------------------------------------
+# A ground shadow is the ground colour made darker by a steady amount, in a flat patch attached to the subject's base.
+SHADOW_K_MIN = 0.45            # a shadow pixel is this fraction of the ground colour or more (real shadows 0.60-0.79; anything darker, such as navy trousers on a blue ground, boots, hair and outlines, is the subject)
+SHADOW_K_MAX = 0.92            # ... and at most this (lighter = it is the ground itself)
+SHADOW_CHROMA_DEV = 0.20       # all three colour channels darken by nearly the same factor (a shadow keeps the ground's hue; on grass it shifts a little)
+SHADOW_MIN_GROUND = 20         # on a ground darker than this (near black) shadows cannot be told from the ground
+SHADOW_MIN_CELLS = 6           # a shadow patch is at least this many cells of the coarse mask ...
+SHADOW_PIECE_SHARE = 0.008    # each piece of a shadow (one darkness band of it) is at least this share of the subject's area ...
+SHADOW_MIN_SHARE = 0.03        # ... and all the pieces together at least this share (real shadows 0.07 and up; small dark details are 0.03 or less)
+SHADOW_BASE_ALLOWANCE = 0.15   # the patch's centre is at or below the subject's base line, less this share of the subject's height
+SHADOW_REACH = 0.6             # and within this many subject-widths sideways of the subject
+SHADOW_FLAT_STD = 0.10         # darkness varies at most this much across the patch (flat, not a pattern)
+SHADOW_GROUND_CONTACT = 0.25   # at least this share of a patch's outer edge touches open ground (a shadow lies on the ground; clothing is enclosed by the sprite's outline)
+SHADOW_WHITE_GROUND = 235      # on a ground this bright (and neutral), a pale grey shadow cannot be told from pale grey parts of the sprite: answer "can't tell"
+SHADOW_MAX_SHARE = 0.5         # a "shadow" bigger than this share of the subject is more likely the sprite's own dark colours (real: 0.03-0.44)
+SHADOW_MIN_ASPECT = 1.0        # a shadow lies flat on the ground: its box is at least this many times wider than tall (legs and trunks are taller than wide)

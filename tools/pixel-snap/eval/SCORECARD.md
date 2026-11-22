@@ -1,6 +1,6 @@
 # Pixel Snap scorecard
 
-Labels: `labels_mj_test_v1.csv` · pictures scored: 102 · run time: 37 s
+Labels: `labels_mj_test_v1.csv` · pictures scored: 102 · run time: 39 s
 Code version: tuning.py as committed; see git log. Pictures are not stored in the repository.
 
 ## Pixel grid
@@ -61,11 +61,18 @@ Wrong or unsure: 0069 (labelled character, said cant), 0078 (labelled character,
 
 **Buildings called characters: 0**
 
+## Ground shadow found (slice D1)
+
+Of 90 lone sprites with a shadow label: **23 of 26 right** where the tool made a call; 64 on white or near-white grounds were answered "can't tell" (a pale shadow cannot be told from pale grey parts of the sprite).
+
+| labelled \ tool said | yes | no | cant | right | wrong | can't tell |
+|---|---|---|---|---|---|---|
+| yes (n=10) | 7 | 3 | 0 | 7 | 3 | 0 |
+| no (n=80) | 0 | 16 | 64 | 16 | 0 | 64 |
+
+Wrong: 0034 (labelled yes, said no), 0061 (labelled yes, said no), 0091 (labelled yes, said no)
+
 ## Facing check
 
 Not built yet (slice C2). 87 labelled pictures are waiting for it.
-
-## Shadow check
-
-Not built yet (slice D1). 90 labelled pictures are waiting for it.
 

@@ -34,13 +34,15 @@ from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # so tuning.py is found even in python -I
 import framing as F  # noqa: E402
+import shadow as SH  # noqa: E402
 import subject as SUBJ  # noqa: E402
 import viewcheck as V  # noqa: E402
 import tuning as T  # noqa: E402
 
-__all__ = ["analyse", "rebuild", "snap_image", "classify_view", "Analysis", "Result", "ViewVerdict", "Framing", "classify_subject"]
+__all__ = ["analyse", "rebuild", "snap_image", "classify_view", "Analysis", "Result", "ViewVerdict", "Framing", "classify_subject", "find_shadow"]
 Framing = F.Framing
 classify_subject = SUBJ.classify_subject
+find_shadow = SH.find_shadow
 ViewVerdict = V.ViewVerdict
 classify_view = V.classify_view
 
@@ -445,6 +447,7 @@ class Result:
     grid_status: str = "found" # "found", "weak", "none" or "manual"
     grid_note: str = ""
     subject: "SUBJ.SubjectVerdict | None" = None   # character / building / scene / unclear
+    shadow: "SH.ShadowInfo | None" = None   # ground shadow under a lone sprite, if any
     flatness: float | None = None   # how flat the blocks are inside (see cell_flatness); None when nothing was snapped
 
     @property
@@ -532,7 +535,7 @@ def rebuild(rgba: np.ndarray, an: Analysis, cell: float | None = None,
     removed = False
     if transparent and found and framing.kind == "isolated":
         removed = F.remove_background(out) > 0
-    return Result(out, bx, by, dx.p, dy.p, found, raw, count_colours(out), view, framing, removed, status, note, SUBJ.classify_subject(framing), flat)
+    return Result(out, bx, by, dx.p, dy.p, found, raw, count_colours(out), view, framing, removed, status, note, SUBJ.classify_subject(framing), SH.find_shadow(rgba, framing), flat)
 
 
 def snap_image(img: Image.Image, cell: float | None = None, follow: bool = True,
@@ -575,9 +578,10 @@ def main(argv=None) -> int:
         is_character = res.subject.kind == "character"
         # characters are judged on which way they face, not on isometric vs orthographic (not built yet)
         view_text = "facing: not checked yet" if is_character else res.view.describe()
+        shadow_text = f"; {res.shadow.describe()}" if (res.shadow.found or res.shadow.unsure) else ""
         if args.check_only or (args.skip_isometric and res.view.kind == "isometric" and not is_character):
             why = "check only" if args.check_only else "skipped, because it is isometric"
-            print(f"[{tag}] {path}: {res.subject.describe()}; {view_text}; {w}x{h} pixels; not saved ({why})")
+            print(f"[{tag}] {path}: {res.subject.describe()}; {view_text}{shadow_text}; {w}x{h} pixels; not saved ({why})")
             continue
         if res.grid_status == "none":
             # nothing was snapped; a copy of the original under a "snapped" name would only mislead
@@ -598,7 +602,7 @@ def main(argv=None) -> int:
             dest = folder / f"{path.stem}_snapped.png"
         out.save(dest)
         note = f"pixel size {res.px:.2f} x {res.py:.2f}" + (" (WEAK grid: check the result)" if res.grid_status == "weak" else "")
-        print(f"[{tag}] {path} -> {dest}: {w}x{h} pixels, {res.colours} colours, {note}; {view_text}; framing {res.framing.kind}{bg_note}")
+        print(f"[{tag}] {path} -> {dest}: {w}x{h} pixels, {res.colours} colours, {note}; {view_text}; framing {res.framing.kind}{shadow_text}{bg_note}")
     return status
 
 

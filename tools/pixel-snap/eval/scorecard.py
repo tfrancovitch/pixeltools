@@ -43,7 +43,7 @@ def run_one(path: str) -> dict:
         res = pixel_snap.snap_image(Image.open(path))
         return {
             "ok": True,
-            "found": bool(res.found), "grid_status": res.grid_status, "subject": "cant" if res.subject.kind == "unclear" else res.subject.kind, "flatness": None if res.flatness is None else round(res.flatness, 3),
+            "found": bool(res.found), "grid_status": res.grid_status, "shadow": "cant" if res.shadow.unsure else ("yes" if res.shadow.found else "no"), "subject": "cant" if res.subject.kind == "unclear" else res.subject.kind, "flatness": None if res.flatness is None else round(res.flatness, 3),
             "px": round(res.px, 2), "py": round(res.py, 2),
             "sprite_w": res.size[0], "sprite_h": res.size[1],
             "view": VIEW_NAMES[res.view.kind],
@@ -54,7 +54,7 @@ def run_one(path: str) -> dict:
             "seconds": round(time.time() - t0, 1),
         }
     except Exception as exc:  # report it, keep going
-        return {"ok": False, "error": str(exc)[:80], "found": False, "view": "cant", "framing": "cant", "subject": "cant", "seconds": round(time.time() - t0, 1)}
+        return {"ok": False, "error": str(exc)[:80], "found": False, "view": "cant", "framing": "cant", "subject": "cant", "shadow": "cant", "seconds": round(time.time() - t0, 1)}
 
 
 def find_images(folder: Path) -> dict[str, Path]:
@@ -152,7 +152,20 @@ def main(argv=None) -> int:
         L += ["Wrong or unsure: " + (", ".join(f"{f[0][-8:-4]} (labelled {f[1]}, said {f[2]})" for f in bad) or "none"), ""]
         bc = [f for f in sj if f[1] == "building" and f[2] == "character"]
         L += [f"**Buildings called characters: {len(bc)}**" + (": " + ", ".join(f[0][-8:-4] for f in bc) if bc else ""), ""]
-    for col, plan in (("facing", "slice C2"), ("shadow", "slice D1")):
+    # ---- shadow ------------------------------------------------------------------
+    sh = [(lab["file"], "yes" if lab["shadow"] in ("contact", "cast") else "no", res.get("shadow", "cant"))
+          for lab, res in zip(labels, results) if lab.get("shadow") in ("none", "contact", "cast")]
+    if sh:
+        c = Counter((t, said) for _, t, said in sh)
+        decided = [f for f in sh if f[2] != "cant"]
+        right = sum(1 for _, t, said in decided if t == said)
+        L += ["## Ground shadow found (slice D1)", "",
+              f"Of {len(sh)} lone sprites with a shadow label: **{right} of {len(decided)} right** where the tool made a call; "
+              f"{len(sh) - len(decided)} on white or near-white grounds were answered \"can't tell\" (a pale shadow cannot be told from pale grey parts of the sprite).", ""]
+        L += table(c, ["yes", "no"], ["yes", "no", "cant"]) + [""]
+        bad = [f for f in decided if f[1] != f[2]]
+        L += ["Wrong: " + (", ".join(f"{f[0][-8:-4]} (labelled {f[1]}, said {f[2]})" for f in bad) or "none"), ""]
+    for col, plan in (("facing", "slice C2"),):
         n = sum(1 for lab in labels if lab.get(col))
         L += [f"## {col.capitalize()} check", "", f"Not built yet ({plan}). {n} labelled pictures are waiting for it.", ""]
 

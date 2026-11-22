@@ -32,7 +32,7 @@ MT Test 0030.png,character,isolated,,,cardinal,n,none,
 MT Test 0031.png,character,isolated,,,diagonal,y,contact,
 MT Test 0032.png,character,isolated,,,cardinal,y,none,
 MT Test 0033.png,character,isolated,,,diagonal,y,cast,cast to the lower left
-MT Test 0034.png,character,isolated,,,diagonal,y,none,dark background; a shadow may be hidden
+MT Test 0034.png,character,isolated,,,diagonal,y,cast,black shadow falling to the lower left on a dark floor (draft said none)
 MT Test 0035.png,character,isolated,,,cardinal,n,none,
 MT Test 0036.png,character,isolated,,,diagonal,n,none,
 MT Test 0037.png,character,isolated,,,cardinal,y,none,
@@ -56,7 +56,7 @@ MT Test 0054.png,character,isolated,,,diagonal,n,none,
 MT Test 0055.png,character,isolated,,,cardinal,n,none,
 MT Test 0056.png,character,isolated,,,cardinal,y,none,
 MT Test 0057.png,character,isolated,,,cardinal,n,none,
-MT Test 0058.png,character,isolated,,,cardinal,y,contact,faint streak under the feet; could be none
+MT Test 0058.png,character,isolated,,,cardinal,y,none,no shadow visible on a closer look (draft said contact)
 MT Test 0059.png,character,isolated,,,cardinal,n,none,
 MT Test 0060.png,character,isolated,,,cardinal,y,none,
 MT Test 0061.png,character,isolated,,,diagonal,n,contact,

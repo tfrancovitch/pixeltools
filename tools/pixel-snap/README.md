@@ -37,6 +37,19 @@ The first question the tool answers, from the shape of the subject:
 
 On the 102 test pictures: right on 98. No building was called a character. The misses are two chibi characters (nearly square, so "unclear") and two subjects standing on a full painted background (called "scene"). The building rule was set from only three isometric buildings, so it is provisional until more examples arrive.
 
+## Is there a ground shadow? (finding only so far)
+
+For a lone sprite on a plain or gradient ground, the tool looks for a **ground shadow**: a flat patch of the ground colour made darker by a steady amount (between about 45% and 92% of the ground brightness), lying on the open ground at the subject's base and touching the subject, wider than tall. The report says where it falls ("to the left", "under the base") and how dark it is. Removing shadows comes in the next step; this step only finds them.
+
+What it deliberately does not do:
+
+- **White or near-white grounds.** A pale grey shadow looks the same as pale grey shoes or clothing, so the tool answers "can't tell" rather than guess.
+- **Very dark shadows** (darker than 45% of the ground, for example a black shadow on a dark floor): treated as part of the subject.
+- **Whole scenes** and **sprites on a full painted background**: their shadows are part of the picture.
+- Sprite shading is never touched: only patches that lie on the open ground count.
+
+On the 102 test pictures: of 10 labelled shadows, 7 found; no false alarms among 16 shadow-free pictures; 64 pictures on white grounds answered "can't tell". On 36 drawn sprites with drawn shadows (four grounds, three shapes, three darknesses), the found shadow overlaps the true one by 91% on average (worst 87%).
+
 ## How sure is the grid? (clear, weak, none)
 
 The tool reports one of three answers and always says why:
