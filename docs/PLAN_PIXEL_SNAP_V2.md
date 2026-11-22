@@ -1,6 +1,6 @@
 # Pixel Snap v2: plan
 
-**Author:** Victor (planning on Opus) · **For:** Thomas, and the Sonnet sessions that build it · **Date:** 2026-11-22 · **Status:** draft, waiting for Thomas's yes on the four decisions in section 8
+**Author:** Victor (planning on Opus) · **For:** Thomas, and the Sonnet sessions that build it · **Date:** 2026-11-22 · **Status:** accepted by Thomas 2026-11-22, with two changes: an object batch for tuning (section 7) and a labelling game (Phase L)
 
 ## 1. What we are building, in one paragraph
 
@@ -85,7 +85,7 @@ Each slice lists what to build, how it is checked, and the gate to pass before m
 - A small, readable rule set (a score per category; highest wins; low margin = "can't tell"). No decision trees grown by code, so Thomas can read why.
 - Gate on batch 1: characters vs buildings vs scenes at least 97 of 102 right, and no building called a character.
 
-**B2. Objects** (small, needs batch 2)
+**B2. Objects** (small, needs the object tuning batch)
 - Add "object" once real examples exist (barrels, crates, furniture, trees, tools, rocks). Likely cues: small or compact, not tall like a character, fewer long straight edges than a building.
 - Gate: set after batch 2 arrives; at minimum, objects never called characters.
 
@@ -151,10 +151,13 @@ Each slice lists what to build, how it is checked, and the gate to pass before m
 | 10 | B2 objects | small | batch 2 |
 | 11 | E1, E2 browser | medium to large | everything above settled |
 | 12 | F release | small | batch 2 held-out score |
+| any time | L1 to L3 labelling game | small, medium, small | nothing (L3 needs A1's label format) |
 
 Reasoning: the scorecard comes first because every later slice is judged by it. Shadows come before the character facing test because shadows distort the character's shape. The risky experiment (C2) is late and fenced by its stop rule, so the dependable parts ship even if it fails.
 
 ## 7. What Thomas needs to provide
+
+**Object tuning batch** (used for tuning, like batch 1): about 30 objects (barrels, crates, furniture, tools, trees, rocks, plants), roughly half isometric and half orthographic. Needed before slice B2.
 
 **Batch 2** (kept back for checking, not tuning), roughly:
 - 20 **objects**: barrels, crates, furniture, tools, trees, rocks, plants. Half isometric, half orthographic.
@@ -164,12 +167,26 @@ Reasoning: the scorecard comes first because every later slice is judged by it. 
 
 Victor or the builder pre-fills the label sheet; Thomas corrects it. Thomas never has to start a label sheet from blank.
 
-## 8. Decisions for Thomas (with recommendations)
+## 8. Decisions (answered by Thomas, 2026-11-22: yes to all four)
 
 1. **The view setting filters and flags; it does not convert.** Converting isometric art into orthographic art means redrawing it, which this tool can't do without AI. *Recommendation: accept.*
 2. **Python first, browser later.** The phone page keeps today's features until Phase E. *Recommendation: accept; it halves the rework while the methods are still moving.*
 3. **Where the test images live.** They are on the public branch `mj-test-samples` now. *Recommendation: keep test images off `main`. If you'd rather they weren't public, delete that branch and share images another way (for example the Remote Control folder on your PC).*
 4. **Batch 2 is held out.** Builders never tune on it. *Recommendation: accept; it is the only honest check that the rules work beyond these 102.*
+
+## Phase L: the labelling game (Thomas's idea, 2026-11-22)
+
+A simple page where people see one picture at a time and answer: **isometric**, **straight-on**, or **not sure**. Optional second question per picture: character, building, object or scene. Many people answering the same picture turns "clear or borderline" into a number (the share who agree), which is better than one person's judgement.
+
+**L1. Design** (small): the questions and their wording (plain words, with one example picture of each view so players share the same meaning; "mixed" offered for characters), how many answers per picture are enough (start at 5), and how to catch careless answers (a few pictures with known answers mixed in; answers from players who miss those are set aside).
+
+**L2. Build** (medium): a page that shows pictures in random order, records answers in a shared store, and shows the player a running count. Likely a claude.ai artifact with a shared database, so no server is needed; check this works for players who are not signed in to Thomas's account before building on it. Pictures are uploaded to the page's own storage, not linked from GitHub.
+
+**L3. Export** (small): a script that turns the answers into the labels CSV the scorecard reads, adding `agree_share` and `answers` columns; `view_clear` becomes "agree_share at least 0.8".
+
+Rules: collect no names, emails or anything else about players beyond their answers; say so on the page. Pictures from the game used for tuning are not used for the held-out check, and the reverse.
+
+Order: L1 and L2 can run alongside Phase A, because they touch none of the snap code. The scorecard (A1) reads whatever labels the game produces.
 
 ## 9. Recommended models
 
