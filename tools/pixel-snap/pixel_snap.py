@@ -31,6 +31,9 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # so tuning.py is found even in python -I
+import tuning as T  # noqa: E402
+
 __all__ = ["analyse", "rebuild", "snap_image", "classify_view", "Analysis", "Result", "ViewVerdict"]
 
 
@@ -84,8 +87,6 @@ def _mean(e):
     return float(e[1:].mean()) if len(e) > 1 else 0.0
 
 
-MIN_GRID_SCORE = 0.15  # below this, the picture is treated as having no clear grid
-NOISE_FACTOR = 3.5     # small images need a stronger signal, because chance matches are bigger
 
 
 @dataclass
@@ -97,7 +98,8 @@ class Axis:
     borrowed: bool = False
 
 
-def _comb_curve(e: np.ndarray, min_p: float = 2.0, harmonics: int = 10, win: int = 33):
+def _comb_curve(e: np.ndarray, min_p: float = T.GRID_MIN_PIXEL, harmonics: int = T.GRID_HARMONICS,
+                win: int = T.GRID_DETREND_WINDOW):
     """Score every candidate pixel size by how strongly the edge signal repeats at
     that size (and its multiples) compared with the positions halfway between.
 
@@ -119,18 +121,18 @@ def _comb_curve(e: np.ndarray, min_p: float = 2.0, harmonics: int = 10, win: int
     ac = np.convolve(ac, [0.25, 0.5, 0.25], mode="same")
     idx = np.arange(n)
     ps_, ss = [], []
-    p, max_p = min_p, max(3.0, n / 6)
+    p, max_p = min_p, max(3.0, n * T.GRID_MAX_FRACTION)
     ks = np.arange(1, harmonics + 1)
     while p <= max_p:
         lags = ks * p
-        lags = lags[lags < 0.7 * n]
-        if len(lags) < 6:
+        lags = lags[lags < T.GRID_LAG_LIMIT * n]
+        if len(lags) < T.GRID_MIN_LAGS:
             break
         on = np.interp(lags, idx, ac).mean()
         off = np.interp(lags - p / 2, idx, ac).mean()
         ps_.append(p)
         ss.append(on - off)
-        p *= 1.001
+        p *= T.GRID_SIZE_STEP
     return np.array(ps_), np.array(ss)
 
 
@@ -144,18 +146,18 @@ def detect_axis(e: np.ndarray) -> Axis:
     smax = float(ss.max())
     # Multiples of the true size score the same as the true size, so take the
     # smallest size that scores almost as well as the best one.
-    first = int(np.argmax(ss >= 0.8 * smax))
-    window = (ps <= ps[first] * 1.06) & (np.arange(len(ps)) >= first)
+    first = int(np.argmax(ss >= T.GRID_SMALLEST_FIT * smax))
+    window = (ps <= ps[first] * T.GRID_WINDOW_RANGE) & (np.arange(len(ps)) >= first)
     pick = int(np.argmax(np.where(window, ss, -9.0)))
     # settle the exact size and where the grid starts, using the whole image
     a1 = smooth(e, 1)
     best = (-1.0, ps[pick], 0.0)
-    for r in np.arange(0.985, 1.0151, 0.0001):
+    for r in np.arange(T.GRID_REFINE_LOW, T.GRID_REFINE_HIGH, T.GRID_REFINE_STEP):
         pp = ps[pick] * r
         sc, o = _best_phase(a1, pp, mean, 0.25)
         if sc > best[0]:
             best = (sc, pp, o)
-    return Axis(best[1], best[2], smax, smax >= max(MIN_GRID_SCORE, NOISE_FACTOR / np.sqrt(len(e))))
+    return Axis(best[1], best[2], smax, smax >= max(T.MIN_GRID_SCORE, T.NOISE_FACTOR / np.sqrt(len(e))))
 
 
 def fit_phase(e: np.ndarray, p: float) -> Axis:
@@ -248,7 +250,7 @@ def _apply_lut(rgba, lut):
     flat[np.where(op)[0], :3] = table[inv]
 
 
-def merge_similar(rgba: np.ndarray, tol: float = 14.0) -> None:
+def merge_similar(rgba: np.ndarray, tol: float = T.COLOUR_MERGE_TOLERANCE) -> None:
     """Colours that differ only by noise become the most common nearby colour."""
     _, op, key = _colour_keys(rgba)
     keys, counts = np.unique(key[op], return_counts=True)
@@ -301,11 +303,6 @@ def quantize(rgba: np.ndarray, k: int) -> None:
 # Which view is it drawn in? (isometric or straight-on)
 # --------------------------------------------------------------------------
 
-ISO_DIAGONAL_MIN = 0.35    # share of edge strength on 22-38 degree lines
-ISO_HORIZONTAL_MAX = 0.12  # isometric art has almost no horizontal edges
-ORTHO_AXIS_MIN = 0.45      # share of edge strength on horizontal or vertical lines
-
-
 @dataclass
 class ViewVerdict:
     kind: str              # "isometric", "orthogonal" or "unclear"
@@ -328,7 +325,7 @@ def _gauss(a: np.ndarray, s: float) -> np.ndarray:
     return sum(k[i] * x[i:i + h, :] for i in range(2 * r + 1))
 
 
-def classify_view(rgba: np.ndarray, sigma: float = 1.2) -> ViewVerdict:
+def classify_view(rgba: np.ndarray, sigma: float = T.VIEW_BLUR_SIGMA) -> ViewVerdict:
     """Tell isometric art from straight-on or top-down art, using the snapped sprite.
 
     Isometric art is built from straight lines at about 26-30 degrees (the 2:1 pixel
@@ -347,17 +344,17 @@ def classify_view(rgba: np.ndarray, sigma: float = 1.2) -> ViewVerdict:
     mag = np.sqrt(gxx + gyy)
     if mag.max() <= 0:
         return ViewVerdict("unclear", 0.0, 0.0, 0.0)
-    keep = mag > 0.15 * mag.max()
+    keep = mag > T.VIEW_MAGNITUDE_KEEP * mag.max()
     line = (np.degrees(0.5 * np.arctan2(2 * gxy, gxx - gyy)) + 90) % 180   # 0 = horizontal line
     dev = np.abs(((line[keep] + 90) % 180) - 90)                           # 0..90 away from horizontal
     wgt = mag[keep]
     tot = wgt.sum()
-    horiz = float(wgt[dev <= 6].sum() / tot)
-    vert = float(wgt[dev >= 84].sum() / tot)
-    diag = float(wgt[(dev >= 20) & (dev <= 38)].sum() / tot)
-    if diag >= ISO_DIAGONAL_MIN and horiz <= ISO_HORIZONTAL_MAX:
+    horiz = float(wgt[dev <= T.VIEW_AXIS_TOLERANCE].sum() / tot)
+    vert = float(wgt[dev >= 90 - T.VIEW_AXIS_TOLERANCE].sum() / tot)
+    diag = float(wgt[(dev >= T.VIEW_ISO_MIN_DEG) & (dev <= T.VIEW_ISO_MAX_DEG)].sum() / tot)
+    if diag >= T.ISO_DIAGONAL_MIN and horiz <= T.ISO_HORIZONTAL_MAX:
         kind = "isometric"
-    elif horiz + vert >= ORTHO_AXIS_MIN:
+    elif horiz + vert >= T.ORTHO_AXIS_MIN:
         kind = "orthogonal"
     else:
         kind = "unclear"
@@ -420,7 +417,7 @@ def rebuild(rgba: np.ndarray, an: Analysis, cell: float | None = None,
         out = sample_cells(rgba, bx, by)
     raw = count_colours(out)
     if found:  # merging shades is for sprites; a picture with no grid is returned untouched
-        merge_similar(out, 14.0)
+        merge_similar(out, T.COLOUR_MERGE_TOLERANCE)
         if colours > 0:
             quantize(out, colours)
     view = classify_view(out) if found else ViewVerdict("unclear", 0.0, 0.0, 0.0)
