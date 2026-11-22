@@ -26,6 +26,19 @@ Every line of output starts with the verdict: `[ISOMETRIC]`, `[ORTHOGONAL]` or `
 
 From Python code: `pixel_snap.snap_image(PIL_image)` returns a `Result` whose `.rgba` is the sprite.
 
+## How sure is the grid? (clear, weak, none)
+
+The tool reports one of three answers and always says why:
+
+- **Clear grid.** Strong, regular edges, and the blocks are flat inside. The picture is snapped.
+- **Weak grid** (used, but flagged "check the result"). Real but thin evidence: soft or blurry blocks, a painted look, or width and height that disagree about the pixel size. It is snapped anyway; look at the result before using it.
+- **No grid.** Nothing is saved, and the report says what it found (best guess and scores). Smooth anime or vector art, sketches and paintings end up here. To pixelate such a picture anyway, give a size: `--cell 16` makes each 16 by 16 block of the original one pixel.
+
+Two details that matter on real Midjourney pictures:
+
+- **Pixels are not always square.** Some portraits are stretched a little, so width and height are measured separately (for example 35.8 by 40.7). When one direction latches onto half the true size, the other direction's answer corrects it.
+- **Flatness.** The test that tells pixel art from a painting: how much of the picture's colour variation does the grid explain? Real sprites, even blurry ones, are above 0.90. Painted landscapes with pixel edges are around 0.8 (weak). Smooth art is around 0.7 or lower (no grid).
+
 ## Lone sprite or whole scene? (framing)
 
 The tool first looks at the picture's border. A plain colour or a gentle gradient all the way round means a **lone sprite on a background** ("isolated"); a busy border means a **scene**. It also makes a rough mask of the subject (everything that differs from the background). Option `--transparent` then makes the background around a lone sprite transparent. Only background that connects to the edge is removed, so a white shirt on a white background, or the gap inside an arm held against the hip, stays. Ground shadows are not background and stay too (they are handled in a later step).

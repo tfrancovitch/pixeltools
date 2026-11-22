@@ -22,10 +22,10 @@ def make_sprite(cols, rows, seed=7):
     return PALETTE[k % 8]
 
 
-def make_fake(sprite, cell, blur=1.0, noise=5, jpeg=None, seed=1):
+def make_fake(sprite, cell, blur=1.0, noise=5, jpeg=None, seed=1, cell_y=None):
     """Enlarge a sprite by a non-whole factor, soften the edges, add noise, maybe JPEG it."""
     rows, cols = sprite.shape[:2]
-    size = (round(cols * cell), round(rows * cell))
+    size = (round(cols * cell), round(rows * (cell_y or cell)))
     img = Image.fromarray(sprite, "RGB").resize(size, Image.NEAREST)
     if blur:
         img = img.filter(ImageFilter.GaussianBlur(blur))

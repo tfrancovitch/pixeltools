@@ -1,11 +1,13 @@
 # Pixel Snap scorecard
 
-Labels: `labels_mj_test_v1.csv` · pictures scored: 102 · run time: 25 s
+Labels: `labels_mj_test_v1.csv` · pictures scored: 102 · run time: 36 s
 Code version: tuning.py as committed; see git log. Pictures are not stored in the repository.
 
-## Pixel grid found
+## Pixel grid
 
-Found on **95 of 102**. Missed: 0001, 0002, 0050, 0088, 0089, 0090, 0100
+Clear grid on **88**, weak grid (used, flagged) on **9**, no grid on **5** of 102.
+- Weak: 0036, 0055, 0089, 0090, 0094, 0095, 0096, 0098, 0100
+- None: 0001, 0002, 0006, 0050, 0088
 
 ## View check (buildings, objects, scenes): all labelled pictures
 

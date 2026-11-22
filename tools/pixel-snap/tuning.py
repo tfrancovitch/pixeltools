@@ -45,3 +45,14 @@ SPECK_SHARE = 0.002            # blobs smaller than this share of the picture ar
 FRAMING_UNIFORM_MIN = 0.8      # border at least this plain = isolated (batch 1: sprites 0.92+, scenes 0.68-)
 FRAMING_SUBJECT_MAX = 0.9      # a "subject" covering more of the picture than this is the whole scene
 TRANSPARENT_TOLERANCE = 40     # background removal: how close to the background colour still goes transparent
+
+# ---- weak grids and wide edges (slice A3) -------------------------------------------
+EDGE_GAPS = (1, 3)             # grid-finding compares pixels this far apart, so soft (blurred) edges still count
+GRID_WEAK_SCORE = 0.10         # between this and MIN_GRID_SCORE the grid is "weak": used, but flagged
+GRID_WEAK_MIN_CELLS = 32       # a weak grid must leave at least this many cells across the picture (else: no grid)
+GRID_WEAK_AGREE = 0.08         # two weak axes must agree on the pixel size within this share to be trusted together
+GRID_SQUARE_TOLERANCE = 0.15   # width and height pixel sizes this close count as agreeing (Midjourney pixels are nearly square)
+FLAT_STRONG = 0.90             # cell flatness (share of colour variation the grid explains): below this a clear grid is only weak
+FLAT_NONE = 0.72               # below this the "blocks" are not flat inside: painted or smooth art, no usable grid
+                               # (batch 1: sprites 0.90-1.00, median 0.96; painted landscapes 0.81-0.84; blurry pixel scene 0.75;
+                               #  smooth anime or sketch 0.68-0.70)

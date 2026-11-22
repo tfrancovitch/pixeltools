@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import argparse
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
@@ -44,17 +44,25 @@ Framing = F.Framing
 # Finding the grid
 # --------------------------------------------------------------------------
 
-def edge_profile(rgb: np.ndarray, axis: int) -> np.ndarray:
-    """e[i] = average colour jump between line i-1 and line i (axis 0: columns, 1: rows)."""
+def edge_profile(rgb: np.ndarray, axis: int, gaps=(1,)) -> np.ndarray:
+    """e[i] = average colour jump across the line between pixel i-1 and pixel i (axis 0: columns,
+    1: rows). With gaps (1, 3) the jump is also measured between pixels further apart, which keeps
+    soft, blurred edges visible. Every gap is centred on the same line."""
     a = rgb.astype(np.int32)
     if axis == 1:
         a = a.transpose(1, 0, 2)
-    h = a.shape[0]
-    step = max(1, h // 600)
-    a = a[::step]
-    jump = np.abs(np.diff(a, axis=1)).sum(axis=2).mean(axis=0)  # length n-1
-    e = np.zeros(a.shape[1], dtype=np.float64)
-    e[1:] = jump
+    h, n = a.shape[0], a.shape[1]
+    a = a[::max(1, h // 600)]
+    e = np.zeros(n, dtype=np.float64)
+    for d in gaps:                       # d odd: compare pixel i-1-half with pixel i+half
+        half = (d - 1) // 2
+        if n <= d:
+            continue
+        lo = half + 1                    # first line i with a left pixel (i-1-half >= 0)
+        hi = n - half                    # one past the last line with a right pixel (i+half <= n-1)
+        idx = np.arange(lo, hi)
+        jump = np.abs(a[:, idx + half, :] - a[:, idx - 1 - half, :]).sum(axis=2).mean(axis=0)
+        e[lo:hi] += jump
     return e
 
 
@@ -99,6 +107,9 @@ class Axis:
     score: float
     ok: bool
     borrowed: bool = False
+    weak: bool = False          # a grid-like signal that is real but thin
+    disagree: bool = False      # width and height gave different pixel sizes that could not be reconciled
+    curve: tuple | None = field(default=None, repr=False)   # (sizes, scores) searched, for the square-pixel check
 
 
 def _comb_curve(e: np.ndarray, min_p: float = T.GRID_MIN_PIXEL, harmonics: int = T.GRID_HARMONICS,
@@ -139,28 +150,107 @@ def _comb_curve(e: np.ndarray, min_p: float = T.GRID_MIN_PIXEL, harmonics: int =
     return np.array(ps_), np.array(ss)
 
 
-def detect_axis(e: np.ndarray) -> Axis:
+def _thresholds(n: int) -> tuple[float, float]:
+    """(strong, weak) score a grid needs on an axis of n pixels; smaller pictures need more."""
+    strong = max(T.MIN_GRID_SCORE, T.NOISE_FACTOR / np.sqrt(n))
+    return strong, strong * T.GRID_WEAK_SCORE / T.MIN_GRID_SCORE
+
+
+def _refine_at(e_fine: np.ndarray, p0: float) -> tuple[float, float]:
+    """Exact pixel size (within +-1.5% of p0) and where the grid starts, from the exact edge profile."""
+    a1 = smooth(e_fine, 1)
+    mean_fine = _mean(e_fine)
+    best = (-1.0, p0, 0.0)
+    for r in np.arange(T.GRID_REFINE_LOW, T.GRID_REFINE_HIGH, T.GRID_REFINE_STEP):
+        pp = p0 * r
+        sc, o = _best_phase(a1, pp, mean_fine, 0.25)
+        if sc > best[0]:
+            best = (sc, pp, o)
+    return best[1], best[2]
+
+
+def _axis_from(e: np.ndarray, e_fine: np.ndarray, p0: float, score: float, curve,
+               judged_on: float | None = None, n: int | None = None) -> Axis:
+    """judged_on: the score the strong/weak call is made on (default: this axis's own score)."""
+    p, off = _refine_at(e_fine, p0)
+    strong, weak = _thresholds(n or len(e))
+    j = score if judged_on is None else judged_on
+    return Axis(p, off, score, j >= strong, weak=weak <= j < strong, curve=curve)
+
+
+def detect_axis(e: np.ndarray, e_fine: np.ndarray | None = None) -> Axis:
+    """e finds the pixel size (wide edges); e_fine (exact edges, default e) fixes its exact value and start."""
+    e_fine = e if e_fine is None else e_fine
     mean = _mean(e)
     if not mean > 1e-6:
         return Axis(1.0, 0.0, 0.0, False)
     ps, ss = _comb_curve(e)
     if len(ps) == 0:
         return Axis(1.0, 0.0, 0.0, False)
+    if e_fine is not e:                 # wide edges help blurry grids, narrow edges help tiny pixels: use the better
+        ps2, ss2 = _comb_curve(e_fine)
+        n = min(len(ps), len(ps2))
+        ps, ss = ps[:n], np.maximum(ss[:n], ss2[:n])
     smax = float(ss.max())
     # Multiples of the true size score the same as the true size, so take the
     # smallest size that scores almost as well as the best one.
     first = int(np.argmax(ss >= T.GRID_SMALLEST_FIT * smax))
     window = (ps <= ps[first] * T.GRID_WINDOW_RANGE) & (np.arange(len(ps)) >= first)
     pick = int(np.argmax(np.where(window, ss, -9.0)))
-    # settle the exact size and where the grid starts, using the whole image
-    a1 = smooth(e, 1)
-    best = (-1.0, ps[pick], 0.0)
-    for r in np.arange(T.GRID_REFINE_LOW, T.GRID_REFINE_HIGH, T.GRID_REFINE_STEP):
-        pp = ps[pick] * r
-        sc, o = _best_phase(a1, pp, mean, 0.25)
-        if sc > best[0]:
-            best = (sc, pp, o)
-    return Axis(best[1], best[2], smax, smax >= max(T.MIN_GRID_SCORE, T.NOISE_FACTOR / np.sqrt(len(e))))
+    return _axis_from(e, e_fine, ps[pick], smax, (ps, ss))
+
+
+def _curve_at(curve, p: float) -> float | None:
+    ps, ss = curve
+    if p < ps[0] or p > ps[-1]:
+        return None
+    return float(np.interp(np.log(p), np.log(ps), ss))
+
+
+def reconcile_square(dx: Axis, dy: Axis, wx, wy, ex, ey) -> tuple[Axis, Axis]:
+    """Pixels are square, so width and height should agree. When they do not, test the likely common
+    sizes (each axis's own answer, and halves and thirds of them, since one axis may have locked onto
+    a multiple) against both signals together, and pick the smallest that scores nearly as well as
+    the best. A direction with no signal at all simply borrows the other's size; a thin direction that
+    points to a different size makes the grid contested."""
+    if dx.curve is None or dy.curve is None:
+        return dx, dy
+    if not (dx.ok or dy.ok):            # neither is strong: nothing to reconcile
+        return dx, dy
+    if dx.ok != dy.ok and not (dy.weak if dx.ok else dx.weak):
+        return dx, dy                   # a strong direction and one with no signal at all: it borrows the strong size
+    if abs(dx.p - dy.p) / ((dx.p + dy.p) / 2) <= T.GRID_SQUARE_TOLERANCE:
+        return dx, dy
+    cands = {round(v / k, 3) for v in (dx.p, dy.p) for k in (1, 2, 3) if v / k >= T.GRID_MIN_PIXEL}
+    scored = []
+    for c in sorted(cands):
+        sx, sy = _curve_at(dx.curve, c), _curve_at(dy.curve, c)
+        if sx is None or sy is None:
+            continue
+        scored.append((c, sx, sy, sx + sy))
+    if not scored:
+        return dx, dy
+    top = max(sc[3] for sc in scored)
+    c, sx, sy, _ = next(sc for sc in scored if sc[3] >= T.GRID_SMALLEST_FIT * top)
+    n = min(len(wx), len(wy))
+    strong, weak = _thresholds(n)
+    resolved = min(sx, sy) >= weak          # both directions support the common size
+    ax = _axis_from(wx, ex, c, sx, dx.curve, max(sx, sy), n)
+    ay = _axis_from(wy, ey, c, sy, dy.curve, max(sx, sy), n)
+    if not resolved:
+        # No common size. The pixels may simply not be square (the picture was stretched a little): if one
+        # direction's size is a clean multiple of the other's, its finer reading was probably half a pixel.
+        both = max(dx.score, dy.score)
+        for k in (2, 3):
+            if abs(dx.p - k * dy.p) / ((dx.p + k * dy.p) / 2) <= T.GRID_SQUARE_TOLERANCE:
+                return (_axis_from(wx, ex, dx.p, dx.score, dx.curve, both, n),
+                        _axis_from(wy, ey, k * dy.p, dy.score, dy.curve, both, n))
+            if abs(dy.p - k * dx.p) / ((dy.p + k * dx.p) / 2) <= T.GRID_SQUARE_TOLERANCE:
+                return (_axis_from(wx, ex, k * dx.p, dx.score, dx.curve, both, n),
+                        _axis_from(wy, ey, dy.p, dy.score, dy.curve, both, n))                        # one direction has no support for the size: at best a weak grid
+        for a in (ax, ay):
+            a.weak, a.ok, a.disagree = max(sx, sy) >= weak, False, True
+    return ax, ay
 
 
 def fit_phase(e: np.ndarray, p: float) -> Axis:
@@ -205,6 +295,27 @@ def make_bounds(e: np.ndarray, p: float, off: float, n: int, follow: bool) -> li
 # --------------------------------------------------------------------------
 # Rebuilding the sprite
 # --------------------------------------------------------------------------
+
+def cell_flatness(rgb: np.ndarray, bx: list[int], by: list[int]) -> float:
+    """Share of the picture's colour variation that the cell grid explains (1 - within-cell / total).
+    Real pixel art, even blurred, has flat blocks (close to 1). Painted or smooth art varies inside
+    every "block", so a grid that merely fits the edges explains much less."""
+    a = rgb.astype(np.float64)
+    h, w = a.shape[:2]
+    cx = np.clip(np.searchsorted(bx, np.arange(w), side="right") - 1, 0, len(bx) - 2)
+    cy = np.clip(np.searchsorted(by, np.arange(h), side="right") - 1, 0, len(by) - 2)
+    idx = (cy[:, None] * (len(bx) - 1) + cx[None, :]).ravel()
+    sel = np.arange(0, idx.size, max(1, idx.size // 400000))      # a sample is plenty
+    idx_s, flat = idx[sel], a.reshape(-1, 3)[sel]
+    n = (len(bx) - 1) * (len(by) - 1)
+    cnt = np.maximum(np.bincount(idx_s, minlength=n), 1)
+    total = ((flat - flat.mean(axis=0)) ** 2).sum()
+    within = 0.0
+    for c in range(3):
+        mean = np.bincount(idx_s, weights=flat[:, c], minlength=n) / cnt
+        within += ((flat[:, c] - mean[idx_s]) ** 2).sum()
+    return float(1 - within / max(total, 1e-9))
+
 
 def sample_cells(rgba: np.ndarray, bx: list[int], by: list[int]) -> np.ndarray:
     """One pixel per cell: the median colour of the cell's middle (edges are blurry)."""
@@ -371,6 +482,8 @@ class Analysis:
     dx: Axis
     dy: Axis
     found: bool
+    status: str = "found"      # "found", "weak" (used, but check it) or "none" (no regular grid)
+    note: str = ""             # one plain sentence about the grid, for reports
 
 
 @dataclass
@@ -386,23 +499,54 @@ class Result:
     view: ViewVerdict
     framing: "F.Framing"
     transparent: bool = False  # True when the background was made transparent
+    grid_status: str = "found" # "found", "weak", "none" or "manual"
+    grid_note: str = ""
+    flatness: float | None = None   # how flat the blocks are inside (see cell_flatness); None when nothing was snapped
 
     @property
     def size(self) -> tuple[int, int]:
         return self.rgba.shape[1], self.rgba.shape[0]
 
 
+def _weak_ok(axis: Axis, n: int) -> bool:
+    return axis.weak and n / axis.p >= T.GRID_WEAK_MIN_CELLS
+
+
 def analyse(rgba: np.ndarray) -> Analysis:
     rgb = rgba[..., :3]
     ex, ey = edge_profile(rgb, 0), edge_profile(rgb, 1)
-    dx, dy = detect_axis(ex), detect_axis(ey)
-    if not dx.ok and dy.ok:
-        dx = fit_phase(ex, dy.p)
-        dx.borrowed = True
-    elif not dy.ok and dx.ok:
-        dy = fit_phase(ey, dx.p)
-        dy.borrowed = True
-    return Analysis(ex, ey, dx, dy, dx.ok or dy.ok)
+    wx, wy = edge_profile(rgb, 0, T.EDGE_GAPS), edge_profile(rgb, 1, T.EDGE_GAPS)
+    dx, dy = detect_axis(wx, ex), detect_axis(wy, ey)
+    dx, dy = reconcile_square(dx, dy, wx, wy, ex, ey)
+    h, w = rgb.shape[:2]
+    guess = f"best guess {dx.p:.1f} x {dy.p:.1f} px, scores {dx.score:.2f} and {dy.score:.2f}"
+    if dx.ok or dy.ok:
+        if not dx.ok:
+            dx = fit_phase(ex, dy.p)
+            dx.borrowed = True
+        elif not dy.ok:
+            dy = fit_phase(ey, dx.p)
+            dy.borrowed = True
+        return Analysis(ex, ey, dx, dy, True, "found", "clear pixel grid found")
+    okx, oky = _weak_ok(dx, w), _weak_ok(dy, h)
+    if (okx or oky) and min(w / dx.p, h / dy.p) < T.GRID_WEAK_MIN_CELLS:
+        okx = oky = False          # a weak grid that leaves too few cells across either side is not trusted
+    if okx or oky:
+        if okx and oky and abs(dx.p - dy.p) / ((dx.p + dy.p) / 2) > T.GRID_WEAK_AGREE:
+            okx, oky = (dx.score >= dy.score), (dy.score > dx.score)   # disagree: trust the stronger axis only
+        if okx and not oky:
+            dy = fit_phase(ey, dx.p)
+            dy.borrowed = True
+        elif oky and not okx:
+            dx = fit_phase(ex, dy.p)
+            dx.borrowed = True
+        return Analysis(ex, ey, dx, dy, True, "weak",
+                        f"weak pixel grid ({dx.p:.1f} x {dy.p:.1f} px): "
+                        + ("width and height gave different sizes, " if dx.disagree else "the blocks are soft or uneven, ")
+                        + "so check the result")
+    return Analysis(ex, ey, dx, dy, False, "none",
+                    f"no regular pixel grid found ({guess}); the picture may be painted, smooth or already true size. "
+                    "To pixelate it anyway, give a pixel size (--cell)")
 
 
 def rebuild(rgba: np.ndarray, an: Analysis, cell: float | None = None,
@@ -411,14 +555,27 @@ def rebuild(rgba: np.ndarray, an: Analysis, cell: float | None = None,
     dx, dy, found = an.dx, an.dy, an.found
     if cell:
         dx, dy, found = fit_phase(an.ex, cell), fit_phase(an.ey, cell), True
+    status, flat = ("manual" if cell else an.status), None
+    note = f"pixel size set by hand ({cell:g})" if cell else an.note
+    if found:
+        bx = make_bounds(an.ex, dx.p, dx.off, w, follow)
+        by = make_bounds(an.ey, dy.p, dy.off, h, follow)
+        flat = cell_flatness(rgba[..., :3], bx, by)
+        if not cell:
+            if flat < T.FLAT_NONE:
+                found, status = False, "none"
+                note = (f"no usable pixel grid: the blocks are not flat inside (flatness {flat:.2f}), so the picture looks "
+                        "painted or smooth, not pixel art. To pixelate it anyway, give a pixel size (--cell)")
+            elif flat < T.FLAT_STRONG and status == "found":
+                status = "weak"
+                note = (f"pixel grid found ({dx.p:.1f} x {dy.p:.1f} px) but the blocks are not very flat inside "
+                        f"(flatness {flat:.2f}): painted or soft, so check the result")
     if not found:
         # nothing to snap: hand the picture back as it is (and skip a pixel-by-pixel loop)
         dx = dy = Axis(1.0, 0.0, 0.0, False)
         bx, by = list(range(w + 1)), list(range(h + 1))
         out = rgba.copy()
     else:
-        bx = make_bounds(an.ex, dx.p, dx.off, w, follow)
-        by = make_bounds(an.ey, dy.p, dy.off, h, follow)
         out = sample_cells(rgba, bx, by)
     raw = count_colours(out)
     if found:  # merging shades is for sprites; a picture with no grid is returned untouched
@@ -430,7 +587,7 @@ def rebuild(rgba: np.ndarray, an: Analysis, cell: float | None = None,
     removed = False
     if transparent and found and framing.kind == "isolated":
         removed = F.remove_background(out) > 0
-    return Result(out, bx, by, dx.p, dy.p, found, raw, count_colours(out), view, framing, removed)
+    return Result(out, bx, by, dx.p, dy.p, found, raw, count_colours(out), view, framing, removed, status, note, flat)
 
 
 def snap_image(img: Image.Image, cell: float | None = None, follow: bool = True,
@@ -474,6 +631,11 @@ def main(argv=None) -> int:
             why = "check only" if args.check_only else "skipped, because it is isometric"
             print(f"[{view}] {path}: {res.view.describe()}; {w}x{h} pixels; not saved ({why})")
             continue
+        if res.grid_status == "none":
+            # nothing was snapped; a copy of the original under a "snapped" name would only mislead
+            print(f"[{view}] {path}: NOT SAVED. {res.grid_note}. {res.view.describe()}; framing {res.framing.kind}")
+            status = status or 2
+            continue
         bg_note = ""
         if args.transparent:
             bg_note = ", background made transparent" if res.transparent else (
@@ -487,11 +649,7 @@ def main(argv=None) -> int:
             folder = args.output if args.output else path.parent
             dest = folder / f"{path.stem}_snapped.png"
         out.save(dest)
-        if res.found or args.cell:
-            note = f"pixel size {res.px:.2f} x {res.py:.2f}"
-        else:
-            note = "NO CLEAR GRID FOUND (image may already be true size; try --cell)"
-            status = status or 2
+        note = f"pixel size {res.px:.2f} x {res.py:.2f}" + (" (WEAK grid: check the result)" if res.grid_status == "weak" else "")
         print(f"[{view}] {path} -> {dest}: {w}x{h} pixels, {res.colours} colours, {note}; {res.view.describe()}; framing {res.framing.kind}{bg_note}")
     return status
 

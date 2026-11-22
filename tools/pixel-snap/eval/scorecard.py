@@ -43,7 +43,7 @@ def run_one(path: str) -> dict:
         res = pixel_snap.snap_image(Image.open(path))
         return {
             "ok": True,
-            "found": bool(res.found),
+            "found": bool(res.found), "grid_status": res.grid_status, "flatness": None if res.flatness is None else round(res.flatness, 3),
             "px": round(res.px, 2), "py": round(res.py, 2),
             "sprite_w": res.size[0], "sprite_h": res.size[1],
             "view": VIEW_NAMES[res.view.kind],
@@ -101,9 +101,12 @@ def main(argv=None) -> int:
         L += [f"**Crashed on {len(errors)} pictures:** " + ", ".join(f"{r['file']} ({r['error']})" for r in errors), ""]
 
     # ---- grid -------------------------------------------------------------------
-    nf = [r for r in rows if not r["found"]]
-    L += ["## Pixel grid found", "",
-          f"Found on **{len(rows) - len(nf)} of {len(rows)}**. Missed: " + (", ".join(r["file"][-8:-4] for r in nf) or "none"), ""]
+    by_status = {k: [r["file"][-8:-4] for r in rows if r.get("grid_status") == k] for k in ("found", "weak", "none")}
+    L += ["## Pixel grid", "",
+          f"Clear grid on **{len(by_status['found'])}**, weak grid (used, flagged) on **{len(by_status['weak'])}**, "
+          f"no grid on **{len(by_status['none'])}** of {len(rows)}.",
+          f"- Weak: " + (", ".join(by_status["weak"]) or "none"),
+          f"- None: " + (", ".join(by_status["none"]) or "none"), ""]
 
     # ---- view -------------------------------------------------------------------
     scored = []                       # the labelled answer and the tool's answer, kept apart
@@ -145,7 +148,7 @@ def main(argv=None) -> int:
     # per-picture detail next to the report (ignored by git)
     detail = args.out.with_name("last_run.csv")
     with open(detail, "w", newline="", encoding="utf-8") as f:
-        keys = ["file", "found", "px", "py", "sprite_w", "sprite_h", "view", "diag", "horiz", "vert", "framing", "border_plain", "subject_share", "seconds"]
+        keys = ["file", "found", "grid_status", "flatness", "px", "py", "sprite_w", "sprite_h", "view", "diag", "horiz", "vert", "framing", "border_plain", "subject_share", "seconds"]
         w = csv.writer(f)
         w.writerow(["file", "label_view", "label_clear"] + keys[1:])
         for lab, res in zip(labels, results):
