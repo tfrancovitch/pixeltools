@@ -212,30 +212,66 @@ function meanOf(e) { let m = 0; for (let i = 1; i < e.length; i++) m += e[i]; re
 function refine(e, pc, mean) {
   const a = smooth(e, 1);
   let best = { s: -1, p: pc, o: 0 };
-  for (let r = 0.996; r <= 1.0041; r += 0.0001) {
+  for (let r = 0.985; r <= 1.0151; r += 0.0001) {
     const p = pc * r, ph = bestPhase(a, p, mean, 0.25);
     if (ph.s > best.s) best = { s: ph.s, p, o: ph.o };
   }
   return best;
 }
 
-function detectAxis(e) {
-  const n = e.length, mean = meanOf(e);
-  if (!(mean > 1e-6)) return { p: 1, off: 0, score: 0, ok: false };
-  const minP = 2, maxP = Math.max(minP * 1.5, n / 6);
-  const a = smooth(e, 2), cand = [];
-  for (let p = minP; p <= maxP; p *= 1.001) {
-    const ph = bestPhase(a, p, mean, 1);
-    cand.push({ p, s: ph.s });
+// Score every candidate pixel size by how strongly the edge signal repeats at that size
+// (and its multiples) compared with the spots halfway between. It uses the signal's
+// autocorrelation, so it does not depend on where the grid starts, and a few lucky
+// outline edges cannot fake a large grid.
+const MIN_GRID_SCORE = 0.15, NOISE_FACTOR = 3.5;
+
+function combCurve(e) {
+  const n = e.length - 1;
+  const x = new Float64Array(n);
+  for (let i = 0; i < n; i++) x[i] = Math.sqrt(e[i + 1]);
+  const cs = new Float64Array(n + 1);
+  for (let i = 0; i < n; i++) cs[i + 1] = cs[i] + x[i];
+  for (let i = 0; i < n; i++) {           // remove the slow background (figure vs empty space)
+    const lo = Math.max(0, i - 16), hi = Math.min(n, i + 17);
+    x[i] -= (cs[hi] - cs[lo]) / (hi - lo);
   }
-  let smax = 0;
-  for (const c of cand) if (c.s > smax) smax = c.s;
+  const L = Math.min(n - 1, Math.floor(0.7 * n) + 3);
+  const raw = new Float64Array(L + 1);
+  for (let l = 0; l <= L; l++) { let t = 0; for (let i = 0; i + l < n; i++) t += x[i] * x[i + l]; raw[l] = t; }
+  if (!(raw[0] > 0)) return { P: [], S: [] };
+  const ac = new Float64Array(L + 1);
+  for (let l = 0; l <= L; l++) ac[l] = raw[l] / raw[0] * n / (n - l);
+  const acs = new Float64Array(L + 1);
+  for (let l = 1; l < L; l++) acs[l] = 0.25 * ac[l - 1] + 0.5 * ac[l] + 0.25 * ac[l + 1];
+  const at = v => { const i = Math.floor(v), f = v - i; return acs[i] * (1 - f) + acs[i + 1] * f; };
+  const P = [], S = [], maxP = Math.max(3, n / 6);
+  for (let p = 2; p <= maxP; p *= 1.001) {
+    let on = 0, off = 0, c = 0;
+    for (let k = 1; k <= 10; k++) {
+      const lag = k * p;
+      if (lag >= 0.7 * n) break;
+      on += at(lag); off += at(lag - p / 2); c++;
+    }
+    if (c < 6) break;
+    P.push(p); S.push((on - off) / c);
+  }
+  return { P, S };
+}
+
+function detectAxis(e) {
+  const mean = meanOf(e);
+  if (!(mean > 1e-6)) return { p: 1, off: 0, score: 0, ok: false };
+  const { P, S } = combCurve(e);
+  if (!P.length) return { p: 1, off: 0, score: 0, ok: false };
+  let smax = -Infinity;
+  for (const v of S) if (v > smax) smax = v;
   // Multiples of the true size score the same as the true size, so take the smallest size that scores almost as well as the best.
-  let first = cand.find(c => c.s >= 0.75 * smax);
+  let first = 0;
+  while (S[first] < 0.8 * smax) first++;
   let pick = first;
-  for (const c of cand) if (c.p <= first.p * 1.06 && c.s > pick.s) pick = c;
-  const r = refine(e, pick.p, mean);
-  return { p: r.p, off: r.o, score: smax, ok: smax >= 1.5 };
+  for (let i = first; i < P.length && P[i] <= P[first] * 1.06; i++) if (S[i] > S[pick]) pick = i;
+  const r = refine(e, P[pick], mean);
+  return { p: r.p, off: r.o, score: smax, ok: smax >= Math.max(MIN_GRID_SCORE, NOISE_FACTOR / Math.sqrt(e.length)) };
 }
 
 function fitPhase(e, p) {
@@ -389,15 +425,22 @@ function analyse(data, W, H) {
 function rebuild(data, W, H, an, opts) {
   let dx = an.dx, dy = an.dy, found = an.found;
   if (opts.cell) { dx = fitPhase(an.ex, opts.cell); dy = fitPhase(an.ey, opts.cell); found = true; }
-  if (!found) { dx = { p: 1, off: 0 }; dy = { p: 1, off: 0 }; }
-  const bx = makeBounds(an.ex, dx.p, dx.off, W, opts.snap);
-  const by = makeBounds(an.ey, dy.p, dy.off, H, opts.snap);
-  const res = sampleCells(data, W, bx, by);
+  let bx, by, res;
+  if (!found) {
+    // nothing to snap: hand the picture back as it is
+    dx = { p: 1, off: 0 }; dy = { p: 1, off: 0 };
+    bx = [0, W]; by = [0, H];
+    res = { w: W, h: H, rgba: new Uint8ClampedArray(data) };
+  } else {
+    bx = makeBounds(an.ex, dx.p, dx.off, W, opts.snap);
+    by = makeBounds(an.ey, dy.p, dy.off, H, opts.snap);
+    res = sampleCells(data, W, bx, by);
+  }
   const raw = countColors(res.rgba);
-  mergeSimilar(res.rgba, 14);
+  if (found) mergeSimilar(res.rgba, 14);
   const before = countColors(res.rgba);
   let after = before;
-  if (opts.colors > 0) after = quantize(res.rgba, opts.colors);
+  if (found && opts.colors > 0) after = quantize(res.rgba, opts.colors);
   return { ...res, bx, by, px: dx.p, py: dy.p, found, raw, before, after, forced: !!opts.cell };
 }
 

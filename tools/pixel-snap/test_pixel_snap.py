@@ -66,6 +66,20 @@ class SnapTests(unittest.TestCase):
                 self.assertAlmostEqual(res.px, cell, delta=0.15)
                 self.assertAlmostEqual(res.py, cell, delta=0.15)
 
+    def test_real_world_shapes(self):
+        """Shapes seen in real Midjourney output: many small cells, heavy JPEG, tall narrow
+        sprites. A first version of the detector failed these. Only the size is checked,
+        because heavy JPEG at small cells smears some colours."""
+        for cols, rows, cell, blur, noise, jpeg in [(160, 160, 6.4, 0.8, 3, None),
+                                                    (200, 200, 5.12, 0.7, 2, 75),
+                                                    (40, 88, 12.4, 2.0, 4, 70)]:
+            with self.subTest(sprite=f"{cols}x{rows}", cell=cell, jpeg=jpeg):
+                res = pixel_snap.snap_image(make_fake(make_sprite(cols, rows), cell, blur, noise, jpeg))
+                self.assertTrue(res.found)
+                self.assertAlmostEqual(res.px, cell, delta=0.1 * cell)
+                self.assertAlmostEqual(res.size[0], cols, delta=1)
+                self.assertAlmostEqual(res.size[1], rows, delta=1)
+
     def test_noise_is_merged_into_flat_colours(self):
         sprite = make_sprite(32, 32)
         res = pixel_snap.snap_image(make_fake(sprite, 12.4, 1.2, 6))
@@ -82,9 +96,12 @@ class SnapTests(unittest.TestCase):
         self.assertEqual(wrong_cells(res, sprite), 0)
 
     def test_pure_noise_has_no_grid(self):
-        rng = np.random.default_rng(3)
-        img = Image.fromarray(rng.integers(0, 256, (200, 200, 3), dtype=np.uint8), "RGB")
-        self.assertFalse(pixel_snap.snap_image(img).found)
+        for size in (120, 200, 400, 1024):
+            for seed in range(5):
+                with self.subTest(size=size, seed=seed):
+                    rng = np.random.default_rng(100 + seed)
+                    img = Image.fromarray(rng.integers(0, 256, (size, size, 3), dtype=np.uint8), "RGB")
+                    self.assertFalse(pixel_snap.snap_image(img).found)
 
     def test_transparency_is_kept(self):
         sprite = make_sprite(20, 20)

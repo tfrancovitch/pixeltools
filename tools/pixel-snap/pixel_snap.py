@@ -82,6 +82,10 @@ def _mean(e):
     return float(e[1:].mean()) if len(e) > 1 else 0.0
 
 
+MIN_GRID_SCORE = 0.15  # below this, the picture is treated as having no clear grid
+NOISE_FACTOR = 3.5     # small images need a stronger signal, because chance matches are bigger
+
+
 @dataclass
 class Axis:
     p: float
@@ -91,37 +95,65 @@ class Axis:
     borrowed: bool = False
 
 
+def _comb_curve(e: np.ndarray, min_p: float = 2.0, harmonics: int = 10, win: int = 33):
+    """Score every candidate pixel size by how strongly the edge signal repeats at
+    that size (and its multiples) compared with the positions halfway between.
+
+    Works on the autocorrelation of the edge signal, so it does not depend on where
+    the grid starts, and a few lucky outline edges cannot fake a large grid."""
+    x = np.sqrt(e[1:].astype(np.float64))
+    n = len(x)
+    # remove the slow background (figure vs. empty space) so only the comb is left
+    csum = np.concatenate([[0.0], np.cumsum(x)])
+    lo = np.clip(np.arange(n) - win // 2, 0, n)
+    hi = np.clip(np.arange(n) + win // 2 + 1, 0, n)
+    x = x - (csum[hi] - csum[lo]) / (hi - lo)
+    f = np.fft.rfft(x, 2 * n)
+    ac = np.fft.irfft(f * np.conj(f))[:n]
+    if ac[0] <= 0:
+        return np.array([]), np.array([])
+    # fewer samples overlap at long lags; undo that fade so big grids are not out-scored
+    ac = ac / ac[0] * n / (n - np.arange(n))
+    ac = np.convolve(ac, [0.25, 0.5, 0.25], mode="same")
+    idx = np.arange(n)
+    ps_, ss = [], []
+    p, max_p = min_p, max(3.0, n / 6)
+    ks = np.arange(1, harmonics + 1)
+    while p <= max_p:
+        lags = ks * p
+        lags = lags[lags < 0.7 * n]
+        if len(lags) < 6:
+            break
+        on = np.interp(lags, idx, ac).mean()
+        off = np.interp(lags - p / 2, idx, ac).mean()
+        ps_.append(p)
+        ss.append(on - off)
+        p *= 1.001
+    return np.array(ps_), np.array(ss)
+
+
 def detect_axis(e: np.ndarray) -> Axis:
-    n = len(e)
     mean = _mean(e)
     if not mean > 1e-6:
         return Axis(1.0, 0.0, 0.0, False)
-    min_p, max_p = 2.0, max(3.0, n / 6)
-    a = smooth(e, 2)
-    ps, ss = [], []
-    p = min_p
-    while p <= max_p:
-        s, _ = _best_phase(a, p, mean, 1.0)
-        ps.append(p)
-        ss.append(s)
-        p *= 1.001
-    ps, ss = np.array(ps), np.array(ss)
+    ps, ss = _comb_curve(e)
+    if len(ps) == 0:
+        return Axis(1.0, 0.0, 0.0, False)
     smax = float(ss.max())
     # Multiples of the true size score the same as the true size, so take the
     # smallest size that scores almost as well as the best one.
-    first = int(np.argmax(ss >= 0.75 * smax))
-    window = ps <= ps[first] * 1.06
-    window[:first] = False
-    pick = int(np.argmax(np.where(window, ss, -1)))
-    pick = pick if ss[pick] > ss[first] else first
+    first = int(np.argmax(ss >= 0.8 * smax))
+    window = (ps <= ps[first] * 1.06) & (np.arange(len(ps)) >= first)
+    pick = int(np.argmax(np.where(window, ss, -9.0)))
+    # settle the exact size and where the grid starts, using the whole image
     a1 = smooth(e, 1)
     best = (-1.0, ps[pick], 0.0)
-    for r in np.arange(0.996, 1.0041, 0.0001):
+    for r in np.arange(0.985, 1.0151, 0.0001):
         pp = ps[pick] * r
-        s, o = _best_phase(a1, pp, mean, 0.25)
-        if s > best[0]:
-            best = (s, pp, o)
-    return Axis(best[1], best[2], smax, smax >= 1.5)
+        sc, o = _best_phase(a1, pp, mean, 0.25)
+        if sc > best[0]:
+            best = (sc, pp, o)
+    return Axis(best[1], best[2], smax, smax >= max(MIN_GRID_SCORE, NOISE_FACTOR / np.sqrt(len(e))))
 
 
 def fit_phase(e: np.ndarray, p: float) -> Axis:
@@ -308,14 +340,19 @@ def rebuild(rgba: np.ndarray, an: Analysis, cell: float | None = None,
     if cell:
         dx, dy, found = fit_phase(an.ex, cell), fit_phase(an.ey, cell), True
     if not found:
+        # nothing to snap: hand the picture back as it is (and skip a pixel-by-pixel loop)
         dx = dy = Axis(1.0, 0.0, 0.0, False)
-    bx = make_bounds(an.ex, dx.p, dx.off, w, follow)
-    by = make_bounds(an.ey, dy.p, dy.off, h, follow)
-    out = sample_cells(rgba, bx, by)
+        bx, by = list(range(w + 1)), list(range(h + 1))
+        out = rgba.copy()
+    else:
+        bx = make_bounds(an.ex, dx.p, dx.off, w, follow)
+        by = make_bounds(an.ey, dy.p, dy.off, h, follow)
+        out = sample_cells(rgba, bx, by)
     raw = count_colours(out)
-    merge_similar(out, 14.0)
-    if colours > 0:
-        quantize(out, colours)
+    if found:  # merging shades is for sprites; a picture with no grid is returned untouched
+        merge_similar(out, 14.0)
+        if colours > 0:
+            quantize(out, colours)
     return Result(out, bx, by, dx.p, dy.p, found, raw, count_colours(out))
 
 

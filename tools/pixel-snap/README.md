@@ -23,7 +23,7 @@ From Python code: `pixel_snap.snap_image(PIL_image)` returns a `Result` whose `.
 
 ## How it works
 
-1. **Find the grid.** Add up the colour jumps along every column and row. Real pixel edges show up as a regular comb of peaks. A search over pixel sizes (fractions allowed, such as 12.4) and offsets picks the comb that explains the peaks best. Multiples of the true size fit equally well, so the smallest size that fits almost as well as the best wins.
+1. **Find the grid.** Add up the colour jumps along every column and row. Real pixel edges show up as a regular comb of peaks. Check how strongly that signal repeats at every candidate pixel size (fractions allowed, such as 12.4) and at its multiples, compared with the spots halfway between. Multiples of the true size repeat equally well, so the smallest size that scores almost as well as the best wins. Then the size and starting offset are fine-tuned over the whole image.
 2. **Follow the wobble.** Each cell edge snaps to the strongest colour change nearby, so a grid that drifts is tracked rather than assumed straight.
 3. **One pixel per cell.** Each cell becomes the median colour of its middle, which skips the blurry edges.
 4. **Tidy the colours.** Shades that differ only by noise merge. An optional limit reduces the palette further.
@@ -34,7 +34,8 @@ Width and height are measured separately.
 
 - Very small cells (about 6 px or less) in a heavily JPEG-compressed image can smear colours between neighbours. The size is still found; some colours come out wrong.
 - A picture with no regular grid (a photo, or art that is already true size) reports "no clear grid". Use the manual pixel size.
-- Tested on pictures made by enlarging known sprites with soft edges, noise and JPEG damage, which is a stand-in for Midjourney output, not the same thing. Real-world failures are welcome as bug reports.
+- Midjourney does not keep to a small palette, so a result can still hold 80 to 200 slightly different colours. For a clean sprite, limit them (`--colors 16` or the "Limit colors" slider) and finish by hand in a pixel editor.
+- Testing so far: pictures made by enlarging known sprites with soft edges, noise and JPEG damage (exact answers known), plus four real Midjourney images checked by eye (no exact answers known). The first version of the detector failed all four real images; the tests now include shapes like them. Real-world failures are welcome as bug reports.
 
 ## Tests
 
