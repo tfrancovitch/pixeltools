@@ -47,10 +47,12 @@ def run_one(path: str) -> dict:
             "view": VIEW_NAMES[res.view.kind],
             "diag": round(res.view.diagonal, 3), "horiz": round(res.view.horizontal, 3),
             "vert": round(res.view.vertical, 3),
+            "framing": "cant" if res.framing.kind == "unclear" else res.framing.kind,
+            "border_plain": round(res.framing.border_uniform, 2), "subject_share": round(res.framing.subject_share, 2),
             "seconds": round(time.time() - t0, 1),
         }
     except Exception as exc:  # report it, keep going
-        return {"ok": False, "error": str(exc)[:80], "found": False, "view": "cant", "seconds": round(time.time() - t0, 1)}
+        return {"ok": False, "error": str(exc)[:80], "found": False, "view": "cant", "framing": "cant", "seconds": round(time.time() - t0, 1)}
 
 
 def find_images(folder: Path) -> dict[str, Path]:
@@ -122,7 +124,17 @@ def main(argv=None) -> int:
           f"- Clear orthographic called isometric ({len(false_iso)}): " + (", ".join(s["file"][-8:-4] for s in false_iso) or "none"), ""]
 
     # ---- checks not built yet ---------------------------------------------------
-    for col, plan in (("subject", "slice B1"), ("framing", "slice A2"), ("shadow", "slice D1")):
+    # ---- framing -----------------------------------------------------------------
+    fr = [(lab["file"], lab["framing"], res.get("framing", "cant"), res.get("border_plain"), res.get("subject_share"))
+          for lab, res in zip(labels, results) if lab.get("framing")]
+    if fr:
+        c = Counter((t, said) for _, t, said, *_ in fr)
+        right = sum(1 for _, t, said, *_ in fr if t == said)
+        wrong = [f for f in fr if f[1] != f[2]]
+        L += ["## Framing check", "", f"**Right on {right} of {len(fr)}.**", ""]
+        L += table(c, ["isolated", "subject_on_background", "scene"], ["isolated", "subject_on_background", "scene", "cant"]) + [""]
+        L += ["Wrong: " + (", ".join(f"{f[0][-8:-4]} (labelled {f[1]}, said {f[2]}; border {f[3]} plain, subject {f[4]})" for f in wrong) or "none"), ""]
+    for col, plan in (("subject", "slice B1"), ("shadow", "slice D1")):
         n = sum(1 for lab in labels if lab.get(col))
         L += [f"## {col.capitalize()} check", "", f"Not built yet ({plan}). {n} labelled pictures are waiting for it.", ""]
 
@@ -131,7 +143,7 @@ def main(argv=None) -> int:
     # per-picture detail next to the report (ignored by git)
     detail = args.out.with_name("last_run.csv")
     with open(detail, "w", newline="", encoding="utf-8") as f:
-        keys = ["file", "found", "px", "py", "sprite_w", "sprite_h", "view", "diag", "horiz", "vert", "seconds"]
+        keys = ["file", "found", "px", "py", "sprite_w", "sprite_h", "view", "diag", "horiz", "vert", "framing", "border_plain", "subject_share", "seconds"]
         w = csv.writer(f)
         w.writerow(["file", "label_view", "label_clear"] + keys[1:])
         for lab, res in zip(labels, results):

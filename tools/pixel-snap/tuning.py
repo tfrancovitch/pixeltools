@@ -33,3 +33,15 @@ VIEW_ISO_MAX_DEG = 38
 ISO_DIAGONAL_MIN = 0.35        # share of edge strength on isometric slopes
 ISO_HORIZONTAL_MAX = 0.12      # isometric art has almost no horizontal edges
 ORTHO_AXIS_MIN = 0.45          # share of edge strength on horizontal or vertical lines
+
+# ---- background and framing (slice A2) ----------------------------------------------
+BG_BORDER_BAND = 0.02          # border strip examined for the background: this share of the short side ...
+BG_BORDER_MIN_PX = 2           # ... but at least this many pixels
+BG_TOLERANCE = 40              # RGB distance (sum of channel differences) still counted as background
+BG_FIT_ROUNDS = 3              # rounds of "fit a gentle gradient, drop outliers (the sprite's feet), refit"
+SUBJECT_DISTANCE = 60          # a pixel this far from the background is part of the subject
+MASK_MAX_SIDE = 256            # the subject mask is built at this size, for speed
+SPECK_SHARE = 0.002            # blobs smaller than this share of the picture are dust, not subject
+FRAMING_UNIFORM_MIN = 0.8      # border at least this plain = isolated (batch 1: sprites 0.92+, scenes 0.68-)
+FRAMING_SUBJECT_MAX = 0.9      # a "subject" covering more of the picture than this is the whole scene
+TRANSPARENT_TOLERANCE = 40     # background removal: how close to the background colour still goes transparent

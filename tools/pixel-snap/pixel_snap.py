@@ -18,6 +18,7 @@ Needs Python 3.9+, numpy and Pillow.
     python pixel_snap.py picture.png --colors 16     # also limit the palette
     python pixel_snap.py *.png --skip-isometric      # leave out isometric pictures
     python pixel_snap.py *.png --check-only          # just report which are isometric
+    python pixel_snap.py sprite.png --transparent    # also make a plain background transparent
 
 The method matches the browser version (pixel-snap.html) in this folder.
 """
@@ -32,9 +33,11 @@ import numpy as np
 from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # so tuning.py is found even in python -I
+import framing as F  # noqa: E402
 import tuning as T  # noqa: E402
 
-__all__ = ["analyse", "rebuild", "snap_image", "classify_view", "Analysis", "Result", "ViewVerdict"]
+__all__ = ["analyse", "rebuild", "snap_image", "classify_view", "Analysis", "Result", "ViewVerdict", "Framing"]
+Framing = F.Framing
 
 
 # --------------------------------------------------------------------------
@@ -381,6 +384,8 @@ class Result:
     colours_raw: int
     colours: int
     view: ViewVerdict
+    framing: "F.Framing"
+    transparent: bool = False  # True when the background was made transparent
 
     @property
     def size(self) -> tuple[int, int]:
@@ -401,7 +406,7 @@ def analyse(rgba: np.ndarray) -> Analysis:
 
 
 def rebuild(rgba: np.ndarray, an: Analysis, cell: float | None = None,
-            follow: bool = True, colours: int = 0) -> Result:
+            follow: bool = True, colours: int = 0, transparent: bool = False) -> Result:
     h, w = rgba.shape[:2]
     dx, dy, found = an.dx, an.dy, an.found
     if cell:
@@ -421,14 +426,18 @@ def rebuild(rgba: np.ndarray, an: Analysis, cell: float | None = None,
         if colours > 0:
             quantize(out, colours)
     view = classify_view(out) if found else ViewVerdict("unclear", 0.0, 0.0, 0.0)
-    return Result(out, bx, by, dx.p, dy.p, found, raw, count_colours(out), view)
+    framing = F.classify_framing(rgba)
+    removed = False
+    if transparent and found and framing.kind == "isolated":
+        removed = F.remove_background(out) > 0
+    return Result(out, bx, by, dx.p, dy.p, found, raw, count_colours(out), view, framing, removed)
 
 
 def snap_image(img: Image.Image, cell: float | None = None, follow: bool = True,
-               colours: int = 0) -> Result:
+               colours: int = 0, transparent: bool = False) -> Result:
     """Convenience: Pillow image in, Result out."""
     rgba = np.array(img.convert("RGBA"))
-    return rebuild(rgba, analyse(rgba), cell, follow, colours)
+    return rebuild(rgba, analyse(rgba), cell, follow, colours, transparent)
 
 
 # --------------------------------------------------------------------------
@@ -442,6 +451,7 @@ def main(argv=None) -> int:
     ap.add_argument("--cell", type=float, help="pixel size in the original, if you want to override auto-detection")
     ap.add_argument("--colors", "--colours", dest="colours", type=int, default=0, help="limit the palette to this many colours")
     ap.add_argument("--no-follow", action="store_true", help="assume a perfectly straight grid instead of following wobbles")
+    ap.add_argument("--transparent", action="store_true", help="make the background transparent (lone sprites on a plain background only)")
     ap.add_argument("--skip-isometric", action="store_true", help="do not save pictures that look isometric (for when you need straight-on art)")
     ap.add_argument("--check-only", action="store_true", help="only report the view (isometric / orthogonal / unclear); save nothing")
     ap.add_argument("--scale", type=int, default=1, help="enlarge the saved picture by this whole number, without blur")
@@ -453,7 +463,7 @@ def main(argv=None) -> int:
     status = 0
     for path in args.inputs:
         try:
-            res = snap_image(Image.open(path), args.cell, not args.no_follow, args.colours)
+            res = snap_image(Image.open(path), args.cell, not args.no_follow, args.colours, args.transparent)
         except Exception as exc:  # unreadable file: report and go on
             print(f"{path}: could not read ({exc})", file=sys.stderr)
             status = 1
@@ -464,6 +474,10 @@ def main(argv=None) -> int:
             why = "check only" if args.check_only else "skipped, because it is isometric"
             print(f"[{view}] {path}: {res.view.describe()}; {w}x{h} pixels; not saved ({why})")
             continue
+        bg_note = ""
+        if args.transparent:
+            bg_note = ", background made transparent" if res.transparent else (
+                ", background NOT removed (" + ("not a lone sprite on a plain background" if res.framing.kind != "isolated" else "no grid found or nothing to remove") + ")")
         out = Image.fromarray(res.rgba, "RGBA")
         if args.scale > 1:
             out = out.resize((w * args.scale, h * args.scale), Image.NEAREST)
@@ -478,7 +492,7 @@ def main(argv=None) -> int:
         else:
             note = "NO CLEAR GRID FOUND (image may already be true size; try --cell)"
             status = status or 2
-        print(f"[{view}] {path} -> {dest}: {w}x{h} pixels, {res.colours} colours, {note}; {res.view.describe()}")
+        print(f"[{view}] {path} -> {dest}: {w}x{h} pixels, {res.colours} colours, {note}; {res.view.describe()}; framing {res.framing.kind}{bg_note}")
     return status
 
 

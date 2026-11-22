@@ -19,11 +19,18 @@ python pixel_snap.py picture.png --colors 16      # also limit the palette
 python pixel_snap.py picture.png --no-follow      # assume a perfectly straight grid
 python pixel_snap.py *.png --check-only           # only report each picture's view; save nothing
 python pixel_snap.py *.png --skip-isometric       # convert everything except isometric pictures
+python pixel_snap.py sprite.png --transparent     # also make the plain background transparent
 ```
 
 Every line of output starts with the verdict: `[ISOMETRIC]`, `[ORTHOGONAL]` or `[UNCLEAR]`.
 
 From Python code: `pixel_snap.snap_image(PIL_image)` returns a `Result` whose `.rgba` is the sprite.
+
+## Lone sprite or whole scene? (framing)
+
+The tool first looks at the picture's border. A plain colour or a gentle gradient all the way round means a **lone sprite on a background** ("isolated"); a busy border means a **scene**. It also makes a rough mask of the subject (everything that differs from the background). Option `--transparent` then makes the background around a lone sprite transparent. Only background that connects to the edge is removed, so a white shirt on a white background, or the gap inside an arm held against the hip, stays. Ground shadows are not background and stay too (they are handled in a later step).
+
+Tested on 102 real pictures: right on 100. The two it gets wrong are a character standing on a full textured field and a church painted into its landscape; those look like scenes to the test ("subject on background" is not separated from "scene" yet).
 
 ## Isometric or straight-on?
 
