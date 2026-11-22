@@ -1,0 +1,555 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!--
+  Pixel Snap (browser version): rebuild true pixel art from an AI "pixel art" image.
+  Copyright (C) 2026 the pixeltools contributors
+
+  This program is free software: you can redistribute it and/or modify it under
+  the terms of the GNU General Public License as published by the Free Software
+  Foundation, either version 3 of the License, or (at your option) any later
+  version. It is distributed WITHOUT ANY WARRANTY; see the GNU General Public
+  License for details: https://www.gnu.org/licenses/
+
+  Works offline from a single file. The same method is in pixel_snap.py.
+-->
+<title>Pixel Snap</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;700&display=swap">
+<style>
+/* Layout: one column on a phone (controls, then original above result); two columns from 860px. */
+:root{
+  --bg:#eceff3; --surface:#ffffff; --fg:#1a1e26; --muted:#586172; --line:#d3d8e0; --accent:#0b7a75; --accent-fg:#ffffff; --warn:#a85a00;
+  --check1:#e4e7ec; --check2:#f6f7f9;
+  --font-display:"Space Grotesk",system-ui,sans-serif; --font-body:"Inter",system-ui,sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#11151a; --surface:#1a1f27; --fg:#e7eaf0; --muted:#98a2b3; --line:#2b323d; --accent:#3fd0c6; --accent-fg:#06211f; --warn:#f0b35a;
+    --check1:#262c36; --check2:#1e232b; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#11151a; --surface:#1a1f27; --fg:#e7eaf0; --muted:#98a2b3; --line:#2b323d; --accent:#3fd0c6; --accent-fg:#06211f; --warn:#f0b35a;
+  --check1:#262c36; --check2:#1e232b; color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--font-body);font-size:15px;line-height:1.5;
+  padding-block:20px 40px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.wrap{max-width:1040px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+header{display:flex;align-items:center;gap:12px}
+header svg{flex:none}
+h1{font-family:var(--font-display);font-weight:700;font-size:1.6rem;line-height:1.1;margin:0;letter-spacing:-.01em}
+.lede{margin:2px 0 0;color:var(--muted);font-size:.9rem;max-width:60ch}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:14px;min-width:0}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+button,.btn{font:inherit;font-weight:600;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--fg);padding:10px 14px;min-height:44px;cursor:pointer}
+button.primary,.btn.primary{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+button:focus-visible,input:focus-visible,label:focus-within{outline:3px solid var(--accent);outline-offset:2px}
+input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.btn{display:inline-flex;align-items:center;justify-content:center}
+.drop{border:2px dashed var(--line);border-radius:10px;padding:10px 14px;color:var(--muted);font-size:.85rem}
+.drop.over{border-color:var(--accent);color:var(--fg)}
+.status{margin:0;font-size:.95rem}
+.status b{font-variant-numeric:tabular-nums}
+.status.warn{color:var(--warn)}
+.controls{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px 20px}
+.ctl{display:flex;flex-direction:column;gap:6px;min-width:0}
+.ctl label,.ctl .lbl{font-size:.78rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.ctl input[type=number]{font:inherit;width:100%;min-height:44px;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--fg);font-variant-numeric:tabular-nums}
+.ctl input[type=range]{width:100%;min-height:44px;accent-color:var(--accent)}
+.ctl .hint{font-size:.8rem;color:var(--muted);margin:0}
+.chk{display:flex;align-items:center;gap:10px;min-height:44px;font-size:.95rem}
+.chk input{width:22px;height:22px;accent-color:var(--accent)}
+.seg{display:flex;gap:6px;flex-wrap:wrap}
+.seg button{min-width:56px;font-variant-numeric:tabular-nums}
+.seg button[aria-pressed=true]{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+.views{display:grid;grid-template-columns:1fr;gap:16px}
+@media (min-width:860px){.views{grid-template-columns:1fr 1fr;align-items:start}}
+.view{display:flex;flex-direction:column;gap:8px;min-width:0}
+h2{font-family:var(--font-display);font-size:1rem;margin:0;font-weight:700}
+.cap{font-size:.82rem;color:var(--muted);margin:0;font-variant-numeric:tabular-nums}
+.frame{border:1px solid var(--line);border-radius:8px;overflow:hidden;line-height:0;
+  background:repeating-conic-gradient(var(--check1) 0 25%,var(--check2) 0 50%) 0 0/16px 16px}
+.frame canvas,.frame img{width:100%;height:auto;display:block;max-width:100%}
+#result{image-rendering:pixelated;-webkit-touch-callout:default}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <svg width="36" height="36" viewBox="0 0 36 36" aria-hidden="true">
+      <rect width="36" height="36" rx="6" fill="var(--accent)"/>
+      <g fill="var(--accent-fg)"><rect x="6" y="6" width="8" height="8"/><rect x="22" y="6" width="8" height="8"/><rect x="14" y="14" width="8" height="8"/><rect x="6" y="22" width="8" height="8"/><rect x="22" y="22" width="8" height="8"/></g>
+    </svg>
+    <div>
+      <h1>Pixel Snap</h1>
+      <p class="lede">Finds the real pixel grid hiding in an AI "pixel art" image and shrinks it so one visible pixel becomes one actual pixel. Your picture stays on your phone.</p>
+    </div>
+  </header>
+
+  <section class="panel" aria-label="Choose an image">
+    <div class="row">
+      <label class="btn primary" for="file">Choose image</label>
+      <input id="file" type="file" accept="image/*">
+      <button id="sampleBtn" type="button">Try the sample</button>
+    </div>
+    <div class="drop" id="drop">On a computer you can also drop an image here.</div>
+    <p class="status" id="status" role="status">Loading sample…</p>
+  </section>
+
+  <section class="panel" aria-label="Adjustments">
+    <div class="controls">
+      <div class="ctl">
+        <label for="cell">Pixel size in the original</label>
+        <input id="cell" type="number" min="1" max="300" step="0.01" inputmode="decimal" placeholder="Auto">
+        <p class="hint" id="cellHint">Leave empty to let the tool find it. If the grid looks wrong, type a size here.</p>
+        <div class="row"><button id="autoBtn" type="button">Back to auto</button></div>
+      </div>
+      <div class="ctl">
+        <label for="colors">Limit colors: <span id="colorsOut">off</span></label>
+        <input id="colors" type="range" min="0" max="64" step="1" value="0">
+        <p class="hint" id="colorsHint">Off keeps every color that was found.</p>
+      </div>
+      <div class="ctl">
+        <span class="lbl">Grid</span>
+        <label class="chk"><input id="wobble" type="checkbox" checked> Follow a wobbly grid</label>
+        <label class="chk"><input id="overlay" type="checkbox" checked> Show grid on the original</label>
+      </div>
+      <div class="ctl">
+        <span class="lbl">Saved size</span>
+        <div class="seg" id="seg" role="group" aria-label="Saved size">
+          <button type="button" data-s="1" aria-pressed="true">True size</button>
+          <button type="button" data-s="4" aria-pressed="false">4×</button>
+          <button type="button" data-s="8" aria-pressed="false">8×</button>
+          <button type="button" data-s="16" aria-pressed="false">16×</button>
+        </div>
+        <p class="hint">True size is the real sprite. The larger sizes are the same picture, enlarged without blur.</p>
+      </div>
+    </div>
+  </section>
+
+  <div class="views">
+    <section class="view" aria-label="Original">
+      <h2>Original</h2>
+      <div class="frame"><canvas id="orig" width="4" height="4"></canvas></div>
+      <p class="cap" id="origCap"></p>
+    </section>
+    <section class="view" aria-label="Result">
+      <h2>Result</h2>
+      <div class="frame"><img id="result" alt="The snapped pixel sprite"></div>
+      <p class="cap" id="resCap"></p>
+      <p class="cap">To save: press and hold the picture, then choose Download image. On a computer, right-click it and choose Save image as.</p>
+    </section>
+  </div>
+</div>
+
+<script>
+/* ---------- core: find the grid and rebuild the sprite ---------- */
+
+function edgeProfile(data, W, H, axis) {
+  // e[i] = average color jump between line i-1 and line i, across the whole image
+  const n = axis === 0 ? W : H, other = axis === 0 ? H : W;
+  const e = new Float32Array(n);
+  const stepO = Math.max(1, Math.floor(other / 600));
+  let cnt = 0;
+  for (let o = 0; o < other; o += stepO) {
+    cnt++;
+    for (let i = 1; i < n; i++) {
+      const a = axis === 0 ? (o * W + i) * 4 : (i * W + o) * 4;
+      const b = axis === 0 ? a - 4 : a - W * 4;
+      e[i] += Math.abs(data[a] - data[b]) + Math.abs(data[a + 1] - data[b + 1]) + Math.abs(data[a + 2] - data[b + 2]);
+    }
+  }
+  for (let i = 0; i < n; i++) e[i] /= cnt;
+  return e;
+}
+
+function smooth(e, k) {
+  const n = e.length, o = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    let s = 0, w = 0;
+    for (let d = -k; d <= k; d++) {
+      const j = i + d;
+      if (j < 1 || j >= n) continue;
+      const wt = k + 1 - Math.abs(d);
+      s += e[j] * wt; w += wt;
+    }
+    o[i] = w ? s / w : 0;
+  }
+  return o;
+}
+
+function interp(a, x) {
+  const i = Math.floor(x);
+  if (i < 0) return a[0];
+  if (i >= a.length - 1) return a[a.length - 1];
+  const f = x - i;
+  return a[i] * (1 - f) + a[i + 1] * f;
+}
+
+function lineScore(a, p, off, mean) {
+  let s = 0, c = 0;
+  for (let x = off; x < a.length - 1; x += p) {
+    if (x < 1) continue;
+    s += interp(a, x); c++;
+  }
+  return c ? (s / c) / mean : 0;
+}
+
+function bestPhase(a, p, mean, step) {
+  let best = -1, bo = 0;
+  for (let o = 0; o < p; o += step) {
+    const sc = lineScore(a, p, o, mean);
+    if (sc > best) { best = sc; bo = o; }
+  }
+  return { s: best, o: bo };
+}
+
+function meanOf(e) { let m = 0; for (let i = 1; i < e.length; i++) m += e[i]; return m / Math.max(1, e.length - 1); }
+
+function refine(e, pc, mean) {
+  const a = smooth(e, 1);
+  let best = { s: -1, p: pc, o: 0 };
+  for (let r = 0.996; r <= 1.0041; r += 0.0001) {
+    const p = pc * r, ph = bestPhase(a, p, mean, 0.25);
+    if (ph.s > best.s) best = { s: ph.s, p, o: ph.o };
+  }
+  return best;
+}
+
+function detectAxis(e) {
+  const n = e.length, mean = meanOf(e);
+  if (!(mean > 1e-6)) return { p: 1, off: 0, score: 0, ok: false };
+  const minP = 2, maxP = Math.max(minP * 1.5, n / 6);
+  const a = smooth(e, 2), cand = [];
+  for (let p = minP; p <= maxP; p *= 1.001) {
+    const ph = bestPhase(a, p, mean, 1);
+    cand.push({ p, s: ph.s });
+  }
+  let smax = 0;
+  for (const c of cand) if (c.s > smax) smax = c.s;
+  // Multiples of the true size score the same as the true size, so take the smallest size that scores almost as well as the best.
+  let first = cand.find(c => c.s >= 0.75 * smax);
+  let pick = first;
+  for (const c of cand) if (c.p <= first.p * 1.06 && c.s > pick.s) pick = c;
+  const r = refine(e, pick.p, mean);
+  return { p: r.p, off: r.o, score: smax, ok: smax >= 1.5 };
+}
+
+function fitPhase(e, p) {
+  const mean = meanOf(e);
+  if (!(mean > 1e-6)) return { p, off: 0, score: 0, ok: true };
+  const ph = bestPhase(smooth(e, 1), p, mean, 0.25);
+  return { p, off: ph.o, score: ph.s, ok: true };
+}
+
+function makeBounds(e, p, off, n, snap) {
+  const s = smooth(e, 1);
+  let B = [];
+  for (let x = off % p; x < n; x += p) if (x > 0.01 && x < n - 0.01) B.push(x);
+  if (B.length && B[0] < 0.5 * p) B.shift();
+  if (B.length && n - B[B.length - 1] < 0.5 * p) B.pop();
+  let lineMean = 0;
+  for (const x of B) lineMean += interp(s, x);
+  lineMean = B.length ? lineMean / B.length : 0;
+  const w = Math.max(1, Math.floor(0.3 * p));
+  const out = [0];
+  for (const x of B) {
+    let v = Math.round(x);
+    if (snap && p >= 3) {
+      let bi = -1, bv = -1;
+      for (let i = Math.max(1, Math.round(x) - w); i <= Math.min(n - 1, Math.round(x) + w); i++) {
+        if (s[i] > bv) { bv = s[i]; bi = i; }
+      }
+      if (bi > 0 && bv >= 0.5 * lineMean) v = bi;
+    }
+    if (v > out[out.length - 1] && v < n) out.push(v);
+  }
+  out.push(n);
+  return out;
+}
+
+function sampleCells(data, W, bx, by) {
+  const w = bx.length - 1, h = by.length - 1;
+  const out = new Uint8ClampedArray(w * h * 4);
+  const R = new Uint8Array(500), G = new Uint8Array(500), Bl = new Uint8Array(500), A = new Uint8Array(500);
+  for (let cy = 0; cy < h; cy++) {
+    for (let cx = 0; cx < w; cx++) {
+      const x0 = bx[cx], x1 = bx[cx + 1], y0 = by[cy], y1 = by[cy + 1];
+      let ix = Math.floor((x1 - x0) * 0.25), iy = Math.floor((y1 - y0) * 0.25);
+      if (x1 - x0 - 2 * ix < 1) ix = 0;
+      if (y1 - y0 - 2 * iy < 1) iy = 0;
+      const xa = x0 + ix, xb = x1 - ix, ya = y0 + iy, yb = y1 - iy;
+      const sx = Math.max(1, Math.ceil((xb - xa) / 20)), sy = Math.max(1, Math.ceil((yb - ya) / 20));
+      let n = 0, na = 0;
+      for (let y = ya; y < yb; y += sy) {
+        for (let x = xa; x < xb; x += sx) {
+          const i = (y * W + x) * 4;
+          A[na++] = data[i + 3];
+          if (data[i + 3] >= 128) { R[n] = data[i]; G[n] = data[i + 1]; Bl[n] = data[i + 2]; n++; }
+        }
+      }
+      const o = (cy * w + cx) * 4;
+      if (n === 0 || n < na / 2) { out[o + 3] = 0; continue; }
+      out[o] = R.subarray(0, n).sort()[n >> 1];
+      out[o + 1] = G.subarray(0, n).sort()[n >> 1];
+      out[o + 2] = Bl.subarray(0, n).sort()[n >> 1];
+      out[o + 3] = 255;
+    }
+  }
+  return { w, h, rgba: out };
+}
+
+function countColors(rgba) {
+  const m = new Set();
+  for (let i = 0; i < rgba.length; i += 4) if (rgba[i + 3] >= 128) m.add((rgba[i] << 16) | (rgba[i + 1] << 8) | rgba[i + 2]);
+  return m.size;
+}
+
+function quantize(rgba, k) {
+  const map = new Map();
+  for (let i = 0; i < rgba.length; i += 4) {
+    if (rgba[i + 3] < 128) continue;
+    const key = (rgba[i] << 16) | (rgba[i + 1] << 8) | rgba[i + 2];
+    map.set(key, (map.get(key) || 0) + 1);
+  }
+  if (map.size <= k) return map.size;
+  const cols = [...map.entries()].map(([key, n]) => ({ r: key >> 16, g: (key >> 8) & 255, b: key & 255, n }));
+  cols.sort((a, b) => b.n - a.n);
+  const d2 = (a, b) => (a.r - b.r) ** 2 + (a.g - b.g) ** 2 + (a.b - b.b) ** 2;
+  const cen = [{ r: cols[0].r, g: cols[0].g, b: cols[0].b }];
+  const dm = new Float64Array(cols.length).fill(Infinity);
+  while (cen.length < k) {
+    const c = cen[cen.length - 1];
+    let bi = 0, bv = -1;
+    for (let i = 0; i < cols.length; i++) {
+      const dd = d2(cols[i], c);
+      if (dd < dm[i]) dm[i] = dd;
+      const v = dm[i] * Math.sqrt(cols[i].n);
+      if (v > bv) { bv = v; bi = i; }
+    }
+    cen.push({ r: cols[bi].r, g: cols[bi].g, b: cols[bi].b });
+  }
+  const asg = new Int32Array(cols.length);
+  for (let it = 0; it < 12; it++) {
+    for (let i = 0; i < cols.length; i++) {
+      let bj = 0, bd = Infinity;
+      for (let j = 0; j < cen.length; j++) { const dd = d2(cols[i], cen[j]); if (dd < bd) { bd = dd; bj = j; } }
+      asg[i] = bj;
+    }
+    const sum = cen.map(() => ({ r: 0, g: 0, b: 0, n: 0 }));
+    for (let i = 0; i < cols.length; i++) { const s = sum[asg[i]], c = cols[i]; s.r += c.r * c.n; s.g += c.g * c.n; s.b += c.b * c.n; s.n += c.n; }
+    for (let j = 0; j < cen.length; j++) if (sum[j].n) cen[j] = { r: sum[j].r / sum[j].n, g: sum[j].g / sum[j].n, b: sum[j].b / sum[j].n };
+  }
+  const lut = new Map();
+  cols.forEach((c, i) => { const q = cen[asg[i]]; lut.set((c.r << 16) | (c.g << 8) | c.b, [Math.round(q.r), Math.round(q.g), Math.round(q.b)]); });
+  for (let i = 0; i < rgba.length; i += 4) {
+    if (rgba[i + 3] < 128) continue;
+    const q = lut.get((rgba[i] << 16) | (rgba[i + 1] << 8) | rgba[i + 2]);
+    rgba[i] = q[0]; rgba[i + 1] = q[1]; rgba[i + 2] = q[2];
+  }
+  return countColors(rgba);
+}
+
+function mergeSimilar(rgba, tol) {
+  // Colors that differ only by noise become the most common nearby color.
+  const map = new Map();
+  for (let i = 0; i < rgba.length; i += 4) {
+    if (rgba[i + 3] < 128) continue;
+    const key = (rgba[i] << 16) | (rgba[i + 1] << 8) | rgba[i + 2];
+    map.set(key, (map.get(key) || 0) + 1);
+  }
+  const cols = [...map.entries()].sort((a, b) => b[1] - a[1]).map(([k]) => [k >> 16, (k >> 8) & 255, k & 255, k]);
+  const reps = [], lut = new Map(), t2 = tol * tol;
+  for (const c of cols) {
+    let hit = null;
+    for (const r of reps) if ((c[0] - r[0]) ** 2 + (c[1] - r[1]) ** 2 + (c[2] - r[2]) ** 2 <= t2) { hit = r; break; }
+    if (!hit) { reps.push(c); hit = c; }
+    lut.set(c[3], hit);
+  }
+  for (let i = 0; i < rgba.length; i += 4) {
+    if (rgba[i + 3] < 128) continue;
+    const q = lut.get((rgba[i] << 16) | (rgba[i + 1] << 8) | rgba[i + 2]);
+    rgba[i] = q[0]; rgba[i + 1] = q[1]; rgba[i + 2] = q[2];
+  }
+}
+
+// Cached analysis so sliders do not redo the slow part.
+function analyse(data, W, H) {
+  const ex = edgeProfile(data, W, H, 0), ey = edgeProfile(data, W, H, 1);
+  let dx = detectAxis(ex), dy = detectAxis(ey);
+  if (!dx.ok && dy.ok) { dx = fitPhase(ex, dy.p); dx.borrowed = true; }
+  else if (!dy.ok && dx.ok) { dy = fitPhase(ey, dx.p); dy.borrowed = true; }
+  const found = dx.ok || dy.ok;
+  return { ex, ey, dx, dy, found };
+}
+
+function rebuild(data, W, H, an, opts) {
+  let dx = an.dx, dy = an.dy, found = an.found;
+  if (opts.cell) { dx = fitPhase(an.ex, opts.cell); dy = fitPhase(an.ey, opts.cell); found = true; }
+  if (!found) { dx = { p: 1, off: 0 }; dy = { p: 1, off: 0 }; }
+  const bx = makeBounds(an.ex, dx.p, dx.off, W, opts.snap);
+  const by = makeBounds(an.ey, dy.p, dy.off, H, opts.snap);
+  const res = sampleCells(data, W, bx, by);
+  const raw = countColors(res.rgba);
+  mergeSimilar(res.rgba, 14);
+  const before = countColors(res.rgba);
+  let after = before;
+  if (opts.colors > 0) after = quantize(res.rgba, opts.colors);
+  return { ...res, bx, by, px: dx.p, py: dy.p, found, raw, before, after, forced: !!opts.cell };
+}
+
+/* ---------- sample picture (fake pixel art, like an AI image) ---------- */
+
+function makeFake(grid, cols, rows, cell, blur, noise, jpeg) {
+  const small = document.createElement('canvas'); small.width = cols; small.height = rows;
+  const sc = small.getContext('2d');
+  const id = sc.createImageData(cols, rows);
+  for (let i = 0; i < cols * rows; i++) { id.data.set(grid[i], i * 4); id.data[i * 4 + 3] = 255; }
+  sc.putImageData(id, 0, 0);
+  const W = Math.round(cols * cell), H = Math.round(rows * cell);
+  const big = document.createElement('canvas'); big.width = W; big.height = H;
+  const bc = big.getContext('2d');
+  bc.imageSmoothingEnabled = false;
+  bc.drawImage(small, 0, 0, W, H);
+  let src = big;
+  if (blur > 0) {
+    const b2 = document.createElement('canvas'); b2.width = W; b2.height = H;
+    const c2 = b2.getContext('2d'); c2.filter = 'blur(' + blur + 'px)'; c2.drawImage(big, 0, 0); src = b2;
+  }
+  const out = document.createElement('canvas'); out.width = W; out.height = H;
+  const oc = out.getContext('2d'); oc.drawImage(src, 0, 0);
+  if (noise > 0) {
+    const d = oc.getImageData(0, 0, W, H);
+    let seed = 12345;
+    const rnd = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296;
+    for (let i = 0; i < d.data.length; i += 4) for (let k = 0; k < 3; k++) d.data[i + k] = Math.max(0, Math.min(255, d.data[i + k] + (rnd() - 0.5) * 2 * noise));
+    oc.putImageData(d, 0, 0);
+  }
+  if (jpeg) {
+    return new Promise(res => { const im = new Image(); im.onload = () => { const c = document.createElement('canvas'); c.width = W; c.height = H; c.getContext('2d').drawImage(im, 0, 0); res(c); }; im.src = out.toDataURL('image/jpeg', jpeg); });
+  }
+  return Promise.resolve(out);
+}
+
+function sampleGrid() {
+  const pal = { '.': [191, 227, 196], r: [216, 51, 58], w: [244, 240, 230], d: [42, 26, 46], s: [232, 207, 162], l: [201, 168, 120] };
+  const rows = [
+    '................', '.....dddddd.....', '...ddrrrrrrdd...', '..drrwwrrrwwrd..',
+    '.drrwwwwrrwwwrd.', '.drrrwwrrrrrrrd.', 'drwwrrrrrrwwwwrd', 'drwwwrrrrrwwwwrd',
+    'drrwwrrrrrrwwrrd', '.dddddddddddddd.', '.....dssssd.....', '....dsssssssd...',
+    '....dsllssssd...', '....dsllssssd...', '....dssssssd....', '...dddddddddd...'
+  ].map(r => r.padEnd(16, '.').slice(0, 16));
+  const g = [];
+  for (const r of rows) for (const ch of r) g.push(pal[ch] || pal['.']);
+  return { g, cols: 16, rows: 16 };
+}
+
+/* ---------- page ---------- */
+
+const $ = id => document.getElementById(id);
+const S = { data: null, W: 0, H: 0, an: null, res: null, scale: 1, label: '' };
+let timer = null;
+
+function status(msg, warn) { const el = $('status'); el.innerHTML = msg; el.classList.toggle('warn', !!warn); }
+const fmt = x => (Math.round(x * 100) / 100).toString();
+
+function drawOriginal() {
+  const c = $('orig'), ctx = c.getContext('2d');
+  c.width = S.W; c.height = S.H;
+  ctx.putImageData(new ImageData(S.data, S.W, S.H), 0, 0);
+  if ($('overlay').checked && S.res && S.res.found) {
+    ctx.strokeStyle = 'rgba(255,40,120,.85)';
+    ctx.lineWidth = Math.max(1, Math.round(Math.max(S.W, S.H) / 500));
+    ctx.beginPath();
+    for (const x of S.res.bx.slice(1, -1)) { ctx.moveTo(x, 0); ctx.lineTo(x, S.H); }
+    for (const y of S.res.by.slice(1, -1)) { ctx.moveTo(0, y); ctx.lineTo(S.W, y); }
+    ctx.stroke();
+  }
+  $('origCap').textContent = S.W + ' × ' + S.H + ' px' + (S.label ? ' · ' + S.label : '');
+}
+
+function showResult() {
+  const r = S.res; if (!r) return;
+  const c = document.createElement('canvas'); c.width = r.w; c.height = r.h;
+  c.getContext('2d').putImageData(new ImageData(r.rgba, r.w, r.h), 0, 0);
+  let s = S.scale;
+  while (s > 1 && (r.w * s > 4096 || r.h * s > 4096)) s--;
+  const o = document.createElement('canvas'); o.width = r.w * s; o.height = r.h * s;
+  const ox = o.getContext('2d'); ox.imageSmoothingEnabled = false; ox.drawImage(c, 0, 0, o.width, o.height);
+  $('result').src = o.toDataURL('image/png');
+  $('resCap').textContent = 'Saved file: ' + o.width + ' × ' + o.height + ' px · ' + r.after + ' colors' + (s !== S.scale ? ' (largest size that fits)' : '');
+}
+
+function recompute() {
+  if (!S.data) return;
+  const cell = parseFloat($('cell').value);
+  const colors = parseInt($('colors').value, 10);
+  S.res = rebuild(S.data, S.W, S.H, S.an, { cell: cell > 0 ? cell : null, snap: $('wobble').checked, colors });
+  const r = S.res;
+  $('colorsOut').textContent = colors ? colors : 'off';
+  $('colorsHint').textContent = colors ? (r.before + ' colors found, reduced to ' + r.after + '.') : ('Off keeps ' + r.before + ' colors (' + r.raw + ' before merging shades that differ only by noise).');
+  $('cellHint').textContent = r.found && !r.forced
+    ? 'Found automatically: ' + fmt(r.px) + ' across, ' + fmt(r.py) + ' down.'
+    : 'Leave empty to let the tool find it. If the grid looks wrong, type a size here.';
+  if (r.forced) status('Using your pixel size of <b>' + fmt(parseFloat($('cell').value)) + '</b>. Result: <b>' + r.w + ' × ' + r.h + '</b> pixels.');
+  else if (r.found) status('Found the grid. Each pixel in the image is about <b>' + fmt((r.px + r.py) / 2) + '</b> real pixels wide. Result: <b>' + r.w + ' × ' + r.h + '</b> pixels.');
+  else status('No clear grid found. This image may already be true pixel size, or the blocks are too soft. Type a pixel size above to try your own.', true);
+  drawOriginal();
+  showResult();
+}
+
+function useImageData(img, label) {
+  const W = img.naturalWidth || img.width, H = img.naturalHeight || img.height;
+  if (W * H > 36e6) { status('That image is too large for a phone to process (' + W + ' × ' + H + '). Shrink it to 4096 pixels on the long side first.', true); return; }
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  const ctx = c.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(img, 0, 0);
+  S.data = ctx.getImageData(0, 0, W, H).data; S.W = W; S.H = H; S.label = label || '';
+  status('Looking for the grid…');
+  setTimeout(() => {
+    S.an = analyse(S.data, W, H);
+    $('cell').value = '';
+    recompute();
+  }, 30);
+}
+
+function loadFile(f) {
+  if (!f) return;
+  const url = URL.createObjectURL(f), im = new Image();
+  im.onload = () => { useImageData(im, f.name); URL.revokeObjectURL(url); };
+  im.onerror = () => status('That file could not be read as a picture. Try a PNG or JPG.', true);
+  im.src = url;
+}
+
+async function loadSample() {
+  status('Making a sample…');
+  const s = sampleGrid();
+  const c = await makeFake(s.g, s.cols, s.rows, 18.75, 1.1, 5, 0);
+  useImageData(c, 'sample, drawn 16 × 16 then blurred and enlarged');
+}
+
+$('file').addEventListener('change', e => loadFile(e.target.files[0]));
+$('sampleBtn').addEventListener('click', loadSample);
+$('autoBtn').addEventListener('click', () => { $('cell').value = ''; recompute(); });
+$('cell').addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(recompute, 250); });
+$('colors').addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(recompute, 120); });
+$('wobble').addEventListener('change', recompute);
+$('overlay').addEventListener('change', drawOriginal);
+$('seg').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  S.scale = parseInt(b.dataset.s, 10);
+  for (const x of $('seg').children) x.setAttribute('aria-pressed', x === b ? 'true' : 'false');
+  showResult();
+});
+const drop = $('drop');
+['dragenter', 'dragover'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add('over'); }));
+['dragleave', 'drop'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.remove('over'); }));
+drop.addEventListener('drop', e => loadFile(e.dataTransfer.files[0]));
+
+loadSample();
+</script>
+</body>
+</html>
