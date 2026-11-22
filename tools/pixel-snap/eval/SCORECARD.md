@@ -1,6 +1,6 @@
 # Pixel Snap scorecard
 
-Labels: `labels_mj_test_v1.csv` · pictures scored: 102 · run time: 34 s
+Labels: `labels_mj_test_v1.csv` · pictures scored: 102 · run time: 37 s
 Code version: tuning.py as committed; see git log. Pictures are not stored in the repository.
 
 ## Pixel grid
@@ -13,26 +13,26 @@ Clear grid on **88**, weak grid (used, flagged) on **9**, no grid on **5** of 10
 
 | labelled \ tool said | iso | ort | cant | right | wrong | can't tell |
 |---|---|---|---|---|---|---|
-| iso (n=6) | 0 | 0 | 6 | 0 | 0 | 6 |
-| ort (n=9) | 0 | 0 | 9 | 0 | 0 | 9 |
+| iso (n=6) | 6 | 0 | 0 | 6 | 0 | 0 |
+| ort (n=9) | 0 | 9 | 0 | 9 | 0 | 0 |
 
 ## View check (buildings, objects, scenes): clear cases only (view_clear = y)
 
 | labelled \ tool said | iso | ort | cant | right | wrong | can't tell |
 |---|---|---|---|---|---|---|
-| iso (n=6) | 0 | 0 | 6 | 0 | 0 | 6 |
-| ort (n=7) | 0 | 0 | 7 | 0 | 0 | 7 |
+| iso (n=6) | 6 | 0 | 0 | 6 | 0 | 0 |
+| ort (n=7) | 0 | 7 | 0 | 7 | 0 | 0 |
 
 ## View check (buildings, objects, scenes): not-clear cases (view_clear = n)
 
 | labelled \ tool said | iso | ort | cant | right | wrong | can't tell |
 |---|---|---|---|---|---|---|
 | iso (n=0) | 0 | 0 | 0 | 0 | 0 | 0 |
-| ort (n=2) | 0 | 0 | 2 | 0 | 0 | 2 |
+| ort (n=2) | 0 | 2 | 0 | 2 | 0 | 0 |
 
 ### Misses among clear cases
 
-- Clear isometric not found (6): 0088, 0089, 0090, 0091, 0095, 0096
+- Clear isometric not found (0): none
 - Clear orthographic called isometric (0): none
 
 ## Framing check

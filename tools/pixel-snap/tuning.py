@@ -23,16 +23,28 @@ NOISE_FACTOR = 3.5             # small pictures need a stronger signal: threshol
 # ---- colours ------------------------------------------------------------------------
 COLOUR_MERGE_TOLERANCE = 14.0  # shades closer than this (RGB distance) become one colour
 
-# ---- view check (isometric / orthogonal), v1 line test ------------------------------
-# Known to fail on real Midjourney scenes (batch 1: 0 of 14 clear isometric found). Phase C replaces it.
-VIEW_BLUR_SIGMA = 1.2
-VIEW_MAGNITUDE_KEEP = 0.15     # edges weaker than this share of the strongest are ignored
+# ---- view check (isometric / orthogonal), rebuilt in slice C1 -----------------------
+# Works on the original picture, no grid needed. Spots where the edge direction is coherent over a wider
+# neighbourhood (long straight edges) count; foliage and texture, whose edges point every which way, do not.
+# Thresholds are set from batch 1's 15 non-character pictures (6 isometric, 9 orthographic): provisional.
+VIEW_SIDE = 512                # pictures are shrunk to this long side (or enlarged to at least VIEW_MIN_SIDE)
+VIEW_MIN_SIDE = 384
+VIEW_GRAD_SIGMA = 1.0          # blur before taking edges, at VIEW_SIDE
+VIEW_CELL_BLUR = 0.7           # when the pixel size is known, blur by this share of a pixel, so a stair step reads as part of a line
+VIEW_CELL_MIN_FLATNESS = 0.92  # ... but only for crisp pixel art (flat blocks); soft or painted pictures do better with the small fixed blur
+VIEW_CELL_WINDOW = 2.5         # ... and make the coherence window at least this many pixels wide
+VIEW_WINDOW_FRACTION = 0.008   # coherence window (sigma) as a share of the long side: 4 px at 512
+VIEW_COHERENCE_MIN = 0.8       # a spot counts only if its edge direction is this consistent (0 = random, 1 = a straight line)
+VIEW_ENERGY_PERCENTILE = 60    # ... and only if its edge strength is above this percentile of the picture
+VIEW_MIN_COVERAGE = 0.002      # fewer coherent spots than this share of the picture = nothing to judge by
 VIEW_AXIS_TOLERANCE = 6        # degrees: within this of horizontal or vertical counts as axis-aligned
-VIEW_ISO_MIN_DEG = 20          # isometric slopes: 2:1 pixel lines (26.6) and 30 degree lines
-VIEW_ISO_MAX_DEG = 38
-ISO_DIAGONAL_MIN = 0.35        # share of edge strength on isometric slopes
-ISO_HORIZONTAL_MAX = 0.12      # isometric art has almost no horizontal edges
-ORTHO_AXIS_MIN = 0.45          # share of edge strength on horizontal or vertical lines
+VIEW_ISO_MIN_DEG = 23          # the classic isometric slopes: 2:1 pixel lines (26.6) and 30 degree lines, with a little room
+VIEW_ISO_MAX_DEG = 34
+VIEW_MAX_ENTROPY = 0.92        # edge directions spread this evenly (1 = perfectly even) mean round or organic shapes: nothing to judge by
+                               # (round drawn shapes 0.97+; every real picture in batch 1 is 0.84 or lower)
+ISO_DIAGONAL_MARGIN = 0.05     # isometric: diagonal share exceeds horizontal share by at least this (batch 1: 0.12 to 0.69; straight-on: -0.08 and below)
+ISO_BOTH_FAMILIES_MIN = 0.045  # ... and the weaker of the two diagonal directions (rising, falling) carries at least this (isometric 0.07 and up, straight-on 0.02 and below: midpoint)
+ORTHO_AXIS_MIN = 0.45          # orthogonal: horizontal plus vertical share at least this
 
 # ---- background and framing (slice A2) ----------------------------------------------
 BG_BORDER_BAND = 0.02          # border strip examined for the background: this share of the short side ...

@@ -56,15 +56,20 @@ The tool first looks at the picture's border. A plain colour or a gentle gradien
 
 Tested on 102 real pictures: right on 100. The two it gets wrong are a character standing on a full textured field and a church painted into its landscape; those look like scenes to the test ("subject on background" is not separated from "scene" yet).
 
-## Isometric or straight-on?
+## Isometric or straight-on? (buildings, objects and scenes)
 
-Midjourney often draws isometric art (diamond floors, blocks seen from a corner) when you want straight-on or top-down art. Pixel Snap reports the view first, before anything else:
+Midjourney often draws isometric art (diamond floors, blocks seen from a corner) when you want straight-on or top-down art. For buildings, objects and scenes the tool reports the view; characters are judged on which way they face instead (not built yet).
 
-- **Isometric**: most of the edge strength is on straight lines at about 22 to 38 degrees (the 2:1 pixel slope and the 30 degree slope), and there are almost no horizontal edges.
-- **Orthogonal**: most of the edge strength is on horizontal and vertical lines (front views, top-down maps).
-- **Unclear**: neither. People, animals and other round shapes have no long straight lines to judge by, so they land here. The tool says so instead of guessing.
+How it decides, with no AI and **no pixel grid needed**:
 
-The test runs on the snapped sprite, so it needs the pixel grid first, but it is reported first and `--skip-isometric` stops an isometric picture from being saved.
+1. Find the edges, and keep only spots where the edge direction stays consistent over a wider neighbourhood. A long straight edge is consistent; foliage, grass and texture are not, so trees stop hiding the lines.
+2. Measure how that consistent edge weight is spread over the directions.
+   - **Isometric**: a good share sits on the classic slopes (about 23 to 34 degrees, which covers the 2:1 pixel slope and the 30 degree slope), in **both** directions (rising and falling walls), with far less on horizontal lines.
+   - **Orthogonal**: most of it sits on horizontal and vertical lines.
+   - **Unclear**: neither, or the edge directions are spread evenly in every direction. Smooth round things (barrels, pots, apples) look like that, so the tool says so instead of guessing.
+3. For crisp pixel art, the blur is sized to the pixel so that staircase edges read as the line they approximate.
+
+On the 15 batch-1 pictures that are not characters: **all 15 right** (6 isometric, 9 straight-on), none "unclear". The closest call is the painted church 0090 (isometric, weaker diagonal direction 0.07 against a cut-off of 0.045). The cut-offs come from those 15 pictures plus drawn scenes, so they are provisional until the held-back batch and the object batch confirm them. Option `--skip-isometric` leaves isometric buildings, objects and scenes out of a batch.
 
 ## How it works
 

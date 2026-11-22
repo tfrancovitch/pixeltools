@@ -35,11 +35,14 @@ from PIL import Image
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # so tuning.py is found even in python -I
 import framing as F  # noqa: E402
 import subject as SUBJ  # noqa: E402
+import viewcheck as V  # noqa: E402
 import tuning as T  # noqa: E402
 
 __all__ = ["analyse", "rebuild", "snap_image", "classify_view", "Analysis", "Result", "ViewVerdict", "Framing", "classify_subject"]
 Framing = F.Framing
 classify_subject = SUBJ.classify_subject
+ViewVerdict = V.ViewVerdict
+classify_view = V.classify_view
 
 
 # --------------------------------------------------------------------------
@@ -415,68 +418,6 @@ def quantize(rgba: np.ndarray, k: int) -> None:
     _apply_lut(rgba, lut)
 
 
-# --------------------------------------------------------------------------
-# Which view is it drawn in? (isometric or straight-on)
-# --------------------------------------------------------------------------
-
-@dataclass
-class ViewVerdict:
-    kind: str              # "isometric", "orthogonal" or "unclear"
-    horizontal: float      # share of edge strength on horizontal lines
-    vertical: float        # ... on vertical lines
-    diagonal: float        # ... on 22-38 degree lines (the 2:1 / 30 degree isometric slopes)
-
-    def describe(self) -> str:
-        return (f"{self.kind} (diagonals {self.diagonal:.0%}, horizontals {self.horizontal:.0%}, "
-                f"verticals {self.vertical:.0%})")
-
-
-def _gauss(a: np.ndarray, s: float) -> np.ndarray:
-    r = int(3 * s) + 1
-    k = np.exp(-0.5 * (np.arange(-r, r + 1) / s) ** 2)
-    k /= k.sum()
-    h, w = a.shape
-    p = np.pad(a, r, mode="edge")
-    x = sum(k[i] * p[:, i:i + w] for i in range(2 * r + 1))
-    return sum(k[i] * x[i:i + h, :] for i in range(2 * r + 1))
-
-
-def classify_view(rgba: np.ndarray, sigma: float = T.VIEW_BLUR_SIGMA) -> ViewVerdict:
-    """Tell isometric art from straight-on or top-down art, using the snapped sprite.
-
-    Isometric art is built from straight lines at about 26-30 degrees (the 2:1 pixel
-    slope) with almost no horizontal edges. Front-view and top-down art is built from
-    horizontal and vertical lines. Round or organic shapes (people, animals) have neither,
-    so they come back "unclear" instead of being forced into one of the two."""
-    chans = [rgba[..., c].astype(np.float64) for c in range(3)] + [rgba[..., 3].astype(np.float64)]
-    gxx = gyy = gxy = 0.0
-    for c in chans:
-        b = _gauss(c, sigma)
-        dx = np.zeros_like(b)
-        dy = np.zeros_like(b)
-        dx[:, 1:-1] = (b[:, 2:] - b[:, :-2]) / 2
-        dy[1:-1, :] = (b[2:, :] - b[:-2, :]) / 2
-        gxx, gyy, gxy = gxx + dx * dx, gyy + dy * dy, gxy + dx * dy
-    mag = np.sqrt(gxx + gyy)
-    if mag.max() <= 0:
-        return ViewVerdict("unclear", 0.0, 0.0, 0.0)
-    keep = mag > T.VIEW_MAGNITUDE_KEEP * mag.max()
-    line = (np.degrees(0.5 * np.arctan2(2 * gxy, gxx - gyy)) + 90) % 180   # 0 = horizontal line
-    dev = np.abs(((line[keep] + 90) % 180) - 90)                           # 0..90 away from horizontal
-    wgt = mag[keep]
-    tot = wgt.sum()
-    horiz = float(wgt[dev <= T.VIEW_AXIS_TOLERANCE].sum() / tot)
-    vert = float(wgt[dev >= 90 - T.VIEW_AXIS_TOLERANCE].sum() / tot)
-    diag = float(wgt[(dev >= T.VIEW_ISO_MIN_DEG) & (dev <= T.VIEW_ISO_MAX_DEG)].sum() / tot)
-    if diag >= T.ISO_DIAGONAL_MIN and horiz <= T.ISO_HORIZONTAL_MAX:
-        kind = "isometric"
-    elif horiz + vert >= T.ORTHO_AXIS_MIN:
-        kind = "orthogonal"
-    else:
-        kind = "unclear"
-    return ViewVerdict(kind, horiz, vert, diag)
-
-
 @dataclass
 class Analysis:
     ex: np.ndarray
@@ -498,7 +439,7 @@ class Result:
     found: bool
     colours_raw: int
     colours: int
-    view: ViewVerdict
+    view: "V.ViewVerdict"
     framing: "F.Framing"
     transparent: bool = False  # True when the background was made transparent
     grid_status: str = "found" # "found", "weak", "none" or "manual"
@@ -585,7 +526,8 @@ def rebuild(rgba: np.ndarray, an: Analysis, cell: float | None = None,
         merge_similar(out, T.COLOUR_MERGE_TOLERANCE)
         if colours > 0:
             quantize(out, colours)
-    view = classify_view(out) if found else ViewVerdict("unclear", 0.0, 0.0, 0.0)
+    crisp = found and flat is not None and flat >= T.VIEW_CELL_MIN_FLATNESS
+    view = V.classify_view(rgba, (dx.p + dy.p) / 2 if crisp else None)   # no grid needed; crisp pixel art gets a pixel-sized blur
     framing = F.classify_framing(rgba)
     removed = False
     if transparent and found and framing.kind == "isolated":
