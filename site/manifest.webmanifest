@@ -1,0 +1,24 @@
+{
+  "name": "Pixel Snap",
+  "short_name": "Pixel Snap",
+  "description": "Turn AI pixel art into true pixel sprites, and sort a batch. Runs on your device.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#eceff3",
+  "theme_color": "#0b7a75",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -19,6 +19,7 @@ Needs Python 3.9+, numpy and Pillow.
     python pixel_snap.py *.png --skip-isometric      # leave out isometric pictures
     python pixel_snap.py *.png --check-only          # just report what each picture is and its view
     python pixel_snap.py folder/*.png --sort sorted --want-view orthogonal   # sort a batch into folders
+    python pixel_snap.py folder/*.png --sort sorted --brief                  # ...and print only what needs attention
     python pixel_snap.py sprite.png --transparent    # also make a plain background transparent
     python pixel_snap.py *.png --shadows remove-cast # drop cast (sun-angle) shadows, keep small contact shadows
 
@@ -563,6 +564,15 @@ def snap_image(img: Image.Image, cell: float | None = None, follow: bool = True,
 # Command line
 # --------------------------------------------------------------------------
 
+def brief_line(path: Path, res, tail: str = "") -> str:
+    """One short line for a picture (about 100 characters): what it is, the grid, the view, the shadow."""
+    w, h = res.size
+    view = "facing ?" if res.subject.kind == "character" else f"view {res.view.kind}"
+    shadow = f"shadow {res.shadow.kind}" if res.shadow.found else ("shadow ?" if res.shadow.unsure else "")
+    bits = [res.subject.kind, f"grid {res.grid_status}", f"{w}x{h}" if res.grid_status != "none" else "", view, shadow, tail]
+    return f"{path.name}: " + ", ".join(b for b in bits if b)
+
+
 def run_sorted(args) -> int:
     """Batch mode: decide a folder for every picture, save or copy it there, and write report.csv."""
     import csv
@@ -606,7 +616,10 @@ def run_sorted(args) -> int:
                 shutil.copy2(path, dest)
             saved = str(dest.relative_to(root))
         rows.append(SORT.report_row(path, res, d, saved))
-        print(f"[{res.subject.kind.upper()}] {path.name}: {d.bucket}. {d.reason}")
+        if not args.brief:
+            print(f"[{res.subject.kind.upper()}] {path.name}: {d.bucket}. {d.reason}")
+        elif d.bucket != "matches":
+            print(f"[{d.bucket}] {path.name}: {d.reason[:110]}")
     with open(root / "report.csv", "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=SORT.REPORT_COLUMNS)
         w.writeheader()
@@ -631,6 +644,8 @@ def main(argv=None) -> int:
                     help="for buildings, objects and scenes: the view you need. Used with --sort")
     ap.add_argument("--want-facing", choices=SORT.WANT_FACING, default="either",
                     help="for characters: the facing you need (the facing check is not built yet, so a character is 'cant-tell'). Used with --sort")
+    ap.add_argument("--brief", action="store_true",
+                    help="short output, for scripts and AI sessions: one line per picture (with --sort, only pictures that are not matches, plus totals)")
     ap.add_argument("--sort", type=Path, metavar="FOLDER",
                     help="sort a batch into FOLDER/matches, mismatches, cant-tell and not-pixel-art, with a report.csv of every measurement")
     ap.add_argument("--scale", type=int, default=1, help="enlarge the saved picture by this whole number, without blur")
@@ -661,11 +676,12 @@ def main(argv=None) -> int:
                             else "; shadow NOT removed (no pixel grid to work on)")
         if args.check_only or (args.skip_isometric and res.view.kind == "isometric" and not is_character):
             why = "check only" if args.check_only else "skipped, because it is isometric"
-            print(f"[{tag}] {path}: {res.subject.describe()}; {view_text}{shadow_text}; {w}x{h} pixels; not saved ({why})")
+            print(brief_line(path, res, f"not saved ({why})") if args.brief else
+                  f"[{tag}] {path}: {res.subject.describe()}; {view_text}{shadow_text}; {w}x{h} pixels; not saved ({why})")
             continue
         if res.grid_status == "none":
             # nothing was snapped; a copy of the original under a "snapped" name would only mislead
-            print(f"[{tag}] {path}: NOT SAVED. {res.grid_note}. {res.subject.describe()}")
+            print(brief_line(path, res, "NOT SAVED") if args.brief else f"[{tag}] {path}: NOT SAVED. {res.grid_note}. {res.subject.describe()}")
             status = status or 2
             continue
         bg_note = ""
@@ -682,7 +698,10 @@ def main(argv=None) -> int:
             dest = folder / f"{path.stem}_snapped.png"
         out.save(dest)
         note = f"pixel size {res.px:.2f} x {res.py:.2f}" + (" (WEAK grid: check the result)" if res.grid_status == "weak" else "")
-        print(f"[{tag}] {path} -> {dest}: {w}x{h} pixels, {res.colours} colours, {note}; {view_text}; framing {res.framing.kind}{shadow_text}{bg_note}")
+        if args.brief:
+            print(brief_line(path, res, f"saved {dest.name}" + (", shadow removed" if res.shadow_removed else "")))
+        else:
+            print(f"[{tag}] {path} -> {dest}: {w}x{h} pixels, {res.colours} colours, {note}; {view_text}; framing {res.framing.kind}{shadow_text}{bg_note}")
     return status
 
 

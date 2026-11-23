@@ -1,6 +1,6 @@
 # Pixel Snap v2: checklist
 
-Updated 2026-11-23 after slices E1 and E2. Plan: `PLAN_PIXEL_SNAP_V2.md`. Progress log: `PROGRESS_V2.md`.
+Updated 2026-11-23 after the AI skill and the web-address preparation. Plan: `PLAN_PIXEL_SNAP_V2.md`. Progress log: `PROGRESS_V2.md`.
 
 ## Built (Python tool, branch `plan-pixel-snap-v2`)
 
@@ -15,6 +15,14 @@ Updated 2026-11-23 after slices E1 and E2. Plan: `PLAN_PIXEL_SNAP_V2.md`. Progre
 - [x] **C2** Character facing: **tried, did not work without AI.** Clues are measured and reported; verdict is "can't tell". Stop rule applied.
 - [x] **E1** Porting route decided: hand-port to JavaScript (Pyodide is blocked by the artifact sandbox and would need about 30 MB bundled)
 - [x] **E2** Browser page with everything above: batch of pictures, settings, sorting into the four groups, detail view, CSV report. Identical answers to Python on all 102 real pictures; tested at phone width, with and without the background worker. Not yet confirmed inside the claude.ai viewer by a person.
+
+## Added after the plan (Thomas, 2026-11-23: "a program for the AI to run cheaply, and a way for people to use it")
+
+- [x] **AI program**: the Python tool with a `--brief` output mode (one short line per picture; with `--sort`, only what needs attention plus totals)
+- [x] **AI skill**: `.claude/skills/pixel-snap/SKILL.md` (how to install, run, read the results, keep it cheap, and what the tool cannot do)
+- [x] **Free web address, prepared**: `site/` (installable, works offline) and `.github/workflows/pages.yml`
+- [ ] **Free web address, switched on**: needs Thomas (merge to `main`, then Settings, Pages, Source: GitHub Actions)
+- [ ] **Real Android app (APK)**: not started; only if the web app is not enough
 
 ## Still to build
 

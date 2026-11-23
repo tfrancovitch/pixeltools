@@ -74,6 +74,22 @@ class WebTests(unittest.TestCase):
         done = subprocess.run(["node", str(HERE / "eval" / "web_ui_smoke.js"), str(self.pics)], capture_output=True, text=True, env=node_env())
         self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
 
+    def test_the_site_folder_is_an_installable_page_that_works_offline(self):
+        import functools
+        import http.server
+        import threading
+
+        site = HERE.parent.parent / "site"
+        handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(site))
+        handler.log_message = lambda *a, **k: None
+        server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        try:
+            done = subprocess.run(["node", str(HERE / "eval" / "web_pwa_check.js"), str(server.server_address[1])], capture_output=True, text=True, env=node_env())
+        finally:
+            server.shutdown()
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+
     def test_the_page_still_works_when_the_background_worker_is_blocked(self):
         # the Claude viewer is stricter than a plain browser; without a worker the page runs the same code on the main thread
         done = subprocess.run(["node", str(HERE / "eval" / "web_ui_smoke.js"), str(self.pics), "--no-worker"], capture_output=True, text=True, env=node_env())

@@ -16,9 +16,25 @@ No server needed. Either:
 1. open the private page link you were given (it is the same file, served by Claude), or
 2. save `pixel-snap.html` to the phone (in the GitHub app or site, open the file, choose Download or "Save raw file") and open it from your Downloads in Chrome.
 
+3. (After the one-time setup below) open the free public web address and use Chrome's menu, **Install app** or **Add to Home screen**. It then opens like an app, with its own icon, and keeps working with no connection.
+
 Then tap **Choose pictures** (pick as many as you like), say what you need (view, facing, shadows, transparent background), and read where each picture goes. Tap a picture to see why, the grid it found over the original, and the finished sprite: press and hold it and choose **Download image**. **Copy report (CSV)** copies the full table to paste into a spreadsheet or notes app. The sprites are shown in the same four groups as the Python `--sort` folders: Matches, Wrong view, Can't tell, Not pixel art.
 
 The page does its work in a background worker so it stays responsive (about 1 to 3 seconds per picture on a computer; a phone is slower). If the browser blocks workers, it runs the same code on the main thread instead.
+
+## A free public web address (GitHub Pages)
+
+The `site/` folder is the page as a small installable web app (a web manifest, a service worker that keeps it on the device, icons), and `.github/workflows/pages.yml` publishes it. It needs one switch, once, by the repository owner:
+
+1. Put the work on `main` (merge the branch).
+2. On GitHub: the repository's **Settings**, then **Pages**, then under *Build and deployment* set **Source** to **GitHub Actions**.
+3. Wait about a minute. The address is `https://<owner>.github.io/pixeltools/` (for this repository, `https://tfrancovitch.github.io/pixeltools/`), and the **Actions** tab shows the run. To publish again by hand, run the workflow from the Actions tab.
+
+Because the repository is public, so is the page. It sends nothing anywhere: the pictures never leave the device. `python web/build_web.py` rebuilds `site/` together with `pixel-snap.html`; commit both.
+
+## For AI sessions
+
+`.claude/skills/pixel-snap/SKILL.md` tells a Claude session how to run the Python tool cheaply (whole folders at a time, `--brief` output, no looking at pictures). Copy that folder to `~/.claude/skills/` to use the skill outside this repository.
 
 ## Building the page
 
