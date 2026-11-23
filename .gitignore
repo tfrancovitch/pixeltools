@@ -1,3 +1,5 @@
 __pycache__/
 *.pyc
 tools/pixel-snap/eval/last_run.csv
+tools/pixel-snap/web/core.built.js
+tools/pixel-snap/web/artifact.built.html

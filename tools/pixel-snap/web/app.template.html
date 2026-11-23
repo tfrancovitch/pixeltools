@@ -1,0 +1,524 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Pixel Snap</title>
+<!--
+  Pixel Snap (browser version, v2): turn AI "pixel art" pictures into true pixel sprites, and sort a batch.
+  Copyright (C) 2026 the pixeltools contributors
+
+  This program is free software: you can redistribute it and/or modify it under the terms of the GNU General
+  Public License as published by the Free Software Foundation, either version 3 of the License, or (at your
+  option) any later version. It is distributed WITHOUT ANY WARRANTY; see https://www.gnu.org/licenses/
+
+  One self-contained file: no server, nothing uploaded. Built by web/build_web.py from web/app.template.html
+  and web/core.js; the same method as the Python tool (pixel_snap.py), checked on 102 pictures.
+-->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;700&display=swap">
+<style>
+/* Layout: one column on a phone; settings panel, then batch cards, then the picture in detail. Two columns for the detail view from 860px. */
+:root{
+  --bg:#eceff3; --surface:#ffffff; --fg:#1a1e26; --muted:#586172; --line:#d3d8e0; --accent:#0b7a75; --accent-fg:#ffffff;
+  --ok:#0b7a75; --warn:#a85a00; --note:#3b5bdb; --bad:#a33a3a;
+  --check1:#e4e7ec; --check2:#f6f7f9;
+  --font-display:"Space Grotesk",system-ui,sans-serif; --font-body:"Inter",system-ui,sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#11151a; --surface:#1a1f27; --fg:#e7eaf0; --muted:#98a2b3; --line:#2b323d; --accent:#3fd0c6; --accent-fg:#06211f;
+    --ok:#3fd0c6; --warn:#f0b35a; --note:#8da2ff; --bad:#f08a8a; --check1:#262c36; --check2:#1e232b; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#11151a; --surface:#1a1f27; --fg:#e7eaf0; --muted:#98a2b3; --line:#2b323d; --accent:#3fd0c6; --accent-fg:#06211f;
+  --ok:#3fd0c6; --warn:#f0b35a; --note:#8da2ff; --bad:#f08a8a; --check1:#262c36; --check2:#1e232b; color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--font-body);font-size:15px;line-height:1.5;margin:0;
+  padding-block:20px 48px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.wrap{max-width:1040px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+header{display:flex;align-items:center;gap:12px}
+header svg{flex:none}
+h1{font-family:var(--font-display);font-weight:700;font-size:1.6rem;line-height:1.1;margin:0;letter-spacing:-.01em}
+h2{font-family:var(--font-display);font-size:1.05rem;margin:0;font-weight:700}
+.lede{margin:2px 0 0;color:var(--muted);font-size:.9rem;max-width:62ch}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:14px;min-width:0}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+button,.btn{font:inherit;font-weight:600;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--fg);padding:10px 14px;min-height:44px;cursor:pointer}
+button.primary,.btn.primary{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+button:focus-visible,input:focus-visible,label:focus-within,.card:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.btn{display:inline-flex;align-items:center;justify-content:center}
+.drop{border:2px dashed var(--line);border-radius:10px;padding:10px 14px;color:var(--muted);font-size:.85rem}
+.drop.over{border-color:var(--accent);color:var(--fg)}
+.settings{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px 20px}
+.ctl{display:flex;flex-direction:column;gap:6px;min-width:0}
+.lbl{font-size:.78rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.hint{font-size:.8rem;color:var(--muted);margin:0}
+.seg{display:flex;gap:6px;flex-wrap:wrap}
+.seg button{min-width:56px;font-variant-numeric:tabular-nums}
+.seg button[aria-pressed=true]{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+.ctl input[type=number]{font:inherit;width:100%;min-height:44px;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--fg);font-variant-numeric:tabular-nums}
+.ctl input[type=range]{width:100%;min-height:44px;accent-color:var(--accent)}
+.chk{display:flex;align-items:center;gap:10px;min-height:44px;font-size:.95rem}
+.chk input{width:22px;height:22px;accent-color:var(--accent)}
+.status{margin:0;font-size:.95rem}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{font-size:.85rem;font-weight:600;padding:8px 12px;border-radius:999px;border:1px solid var(--line);background:var(--bg);min-height:40px;display:inline-flex;align-items:center;gap:6px}
+.chip[aria-pressed=true]{outline:2px solid var(--accent)}
+.dot{width:10px;height:10px;border-radius:50%;display:inline-block}
+.f-matches{--c:var(--ok)} .f-mismatches{--c:var(--warn)} .f-cant-tell{--c:var(--note)} .f-not-pixel-art{--c:var(--bad)}
+.dot{background:var(--c)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:12px}
+.card{border:1px solid var(--line);border-left:6px solid var(--c,var(--line));border-radius:10px;background:var(--surface);padding:8px;display:flex;flex-direction:column;gap:6px;cursor:pointer;min-width:0;text-align:left;font-weight:400}
+.card[aria-current=true]{outline:3px solid var(--accent)}
+.card .thumb{height:120px;display:flex;align-items:center;justify-content:center;border-radius:6px;overflow:hidden;background:repeating-conic-gradient(var(--check1) 0 25%,var(--check2) 0 50%) 0 0/12px 12px}
+.card .thumb img{max-width:100%;max-height:100%;image-rendering:pixelated}
+.card .name{font-size:.8rem;overflow-wrap:anywhere;line-height:1.25}
+.card .tag{font-size:.78rem;font-weight:600;color:var(--c,var(--muted))}
+.card .why{font-size:.76rem;color:var(--muted);line-height:1.3}
+.verdict{display:flex;flex-direction:column;gap:2px;border:1px solid var(--line);border-left:6px solid var(--c,var(--line));border-radius:8px;padding:10px 12px;background:var(--bg)}
+.verdict strong{font-family:var(--font-display);font-size:1.05rem}
+.verdict span{font-size:.88rem;color:var(--muted)}
+.facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px 16px;margin:0;padding:0;list-style:none}
+.facts li{font-size:.88rem;display:flex;flex-direction:column;min-width:0}
+.facts b{font-size:.74rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.views{display:grid;grid-template-columns:1fr;gap:16px}
+@media (min-width:860px){.views{grid-template-columns:1fr 1fr;align-items:start}}
+.view{display:flex;flex-direction:column;gap:8px;min-width:0}
+.cap{font-size:.82rem;color:var(--muted);margin:0;font-variant-numeric:tabular-nums}
+.frame{border:1px solid var(--line);border-radius:8px;overflow:hidden;line-height:0;background:repeating-conic-gradient(var(--check1) 0 25%,var(--check2) 0 50%) 0 0/16px 16px}
+.frame canvas,.frame img{width:100%;height:auto;display:block;max-width:100%}
+#result{image-rendering:pixelated;-webkit-touch-callout:default}
+table.clues{border-collapse:collapse;font-size:.84rem;font-variant-numeric:tabular-nums}
+table.clues td{padding:2px 12px 2px 0}
+.empty{color:var(--muted);font-size:.9rem;margin:0}
+footer{font-size:.8rem;color:var(--muted)}
+footer a{color:var(--accent)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <svg width="36" height="36" viewBox="0 0 36 36" aria-hidden="true">
+      <rect width="36" height="36" rx="6" fill="var(--accent)"/>
+      <g fill="var(--accent-fg)"><rect x="6" y="6" width="8" height="8"/><rect x="22" y="6" width="8" height="8"/><rect x="14" y="14" width="8" height="8"/><rect x="6" y="22" width="8" height="8"/><rect x="22" y="22" width="8" height="8"/></g>
+    </svg>
+    <div>
+      <h1>Pixel Snap</h1>
+      <p class="lede">Finds the real pixel grid in AI "pixel art", rebuilds it so one visible pixel is one real pixel, and sorts a batch by what you need. Everything runs on your phone; nothing is uploaded.</p>
+    </div>
+  </header>
+
+  <section class="panel" aria-label="Add pictures">
+    <div class="row">
+      <label class="btn primary" for="file">Choose pictures</label>
+      <input id="file" type="file" accept="image/*" multiple>
+      <button id="sampleBtn" type="button">Try the sample</button>
+      <button id="clearBtn" type="button">Clear all</button>
+    </div>
+    <div class="drop" id="drop">Pick one picture or a whole batch. On a computer you can also drop pictures here.</div>
+    <p class="status" id="status" role="status">Starting…</p>
+  </section>
+
+  <section class="panel" aria-label="What you need">
+    <h2>What do you need?</h2>
+    <div class="settings">
+      <div class="ctl">
+        <span class="lbl">View (buildings, objects, scenes)</span>
+        <div class="seg" id="segView" role="group" aria-label="View wanted">
+          <button type="button" data-v="either" aria-pressed="true">Either</button>
+          <button type="button" data-v="orthogonal" aria-pressed="false">Straight-on</button>
+          <button type="button" data-v="isometric" aria-pressed="false">Isometric</button>
+        </div>
+        <p class="hint">Pictures in the other view go to "Wrong view".</p>
+      </div>
+      <div class="ctl">
+        <span class="lbl">Facing (characters)</span>
+        <div class="seg" id="segFacing" role="group" aria-label="Facing wanted">
+          <button type="button" data-v="either" aria-pressed="true">Either</button>
+          <button type="button" data-v="diagonal" aria-pressed="false">Diagonal</button>
+          <button type="button" data-v="cardinal" aria-pressed="false">Straight</button>
+        </div>
+        <p class="hint" id="facingHint">The tool cannot judge which way a character faces yet, so with a facing chosen every character goes to "Can't tell".</p>
+      </div>
+      <div class="ctl">
+        <span class="lbl">Ground shadows</span>
+        <div class="seg" id="segShadows" role="group" aria-label="Ground shadows">
+          <button type="button" data-v="keep" aria-pressed="true">Keep</button>
+          <button type="button" data-v="remove-cast" aria-pressed="false">Remove cast</button>
+          <button type="button" data-v="remove-all" aria-pressed="false">Remove all</button>
+        </div>
+        <p class="hint">A cast shadow shows a sun angle. "Remove cast" keeps the small contact shadow under the feet.</p>
+      </div>
+      <div class="ctl">
+        <span class="lbl">Also</span>
+        <label class="chk"><input id="transparent" type="checkbox"> Make a plain background transparent</label>
+        <label class="chk"><input id="wobble" type="checkbox" checked> Follow a wobbly grid</label>
+      </div>
+      <div class="ctl">
+        <label class="lbl" for="colors">Limit colors: <span id="colorsOut">off</span></label>
+        <input id="colors" type="range" min="0" max="64" step="1" value="0">
+      </div>
+      <div class="ctl">
+        <label class="lbl" for="cell">Pixel size in the original</label>
+        <input id="cell" type="number" min="1" max="300" step="0.01" inputmode="decimal" placeholder="Auto">
+        <p class="hint">Leave empty for automatic. Type a size to pixelate a painted picture anyway.</p>
+      </div>
+      <div class="ctl">
+        <span class="lbl">Saved size</span>
+        <div class="seg" id="segScale" role="group" aria-label="Saved size">
+          <button type="button" data-v="1" aria-pressed="true">True size</button>
+          <button type="button" data-v="4" aria-pressed="false">4×</button>
+          <button type="button" data-v="8" aria-pressed="false">8×</button>
+          <button type="button" data-v="16" aria-pressed="false">16×</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel" aria-label="Results" id="resultsPanel" hidden>
+    <h2>Where each picture goes</h2>
+    <div class="chips" id="chips"></div>
+    <div class="grid" id="cards"></div>
+    <div class="row">
+      <button id="copyCsv" type="button">Copy report (CSV)</button>
+      <span class="hint" id="copyNote"></span>
+    </div>
+  </section>
+
+  <section class="panel" aria-label="Picture in detail" id="detail" hidden>
+    <div class="verdict" id="verdict"><strong id="vTitle"></strong><span id="vWhy"></span></div>
+    <ul class="facts" id="facts"></ul>
+    <div class="views">
+      <section class="view" aria-label="Original">
+        <h2>Original</h2>
+        <label class="chk"><input id="overlay" type="checkbox" checked> Show the grid it found</label>
+        <div class="frame"><canvas id="orig" width="4" height="4"></canvas></div>
+        <p class="cap" id="origCap"></p>
+      </section>
+      <section class="view" aria-label="Result">
+        <h2>Result</h2>
+        <div class="frame"><img id="result" alt="The snapped pixel sprite"></div>
+        <p class="cap" id="resCap"></p>
+        <p class="cap">To save: press and hold the picture, then choose Download image. On a computer, right-click it and choose Save image as.</p>
+      </section>
+    </div>
+    <div id="cluesBox" hidden>
+      <h2>Facing clues (measured, not decided)</h2>
+      <table class="clues" id="clues"></table>
+    </div>
+  </section>
+
+  <footer>
+    GNU GPL v3 or later. The same method as the Python tool; source and tests at <a href="https://github.com/tfrancovitch/pixeltools" target="_blank" rel="noopener">github.com/tfrancovitch/pixeltools</a>.
+    Checked against the Python version on 102 test pictures: identical answers on every value compared.
+  </footer>
+</div>
+
+<script id="core-src">/*CORE_JS*/</script>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const FOLDERS = [
+  ['matches', 'Matches', 'The picture is pixel art and has the view you asked for.'],
+  ['mismatches', 'Wrong view', 'Pixel art, but in the view you did not ask for.'],
+  ['cant-tell', "Can't tell", 'The view or facing could not be judged.'],
+  ['not-pixel-art', 'Not pixel art', 'No usable pixel grid: painted, smooth, or already true size.'],
+];
+const FOLDER_NAME = Object.fromEntries(FOLDERS.map(f => [f[0], f[1]]));
+
+/* ------------------------------------------------------------------ settings */
+const S = { view: 'either', facing: 'either', shadows: 'keep', scale: 1, transparent: false, follow: true, colours: 0, cell: null };
+try { const saved = JSON.parse(localStorage.getItem('pixelSnapSettings') || '{}'); for (const k of ['view', 'facing', 'shadows', 'scale']) if (saved[k] !== undefined) S[k] = saved[k]; } catch (e) { /* storage may be blocked */ }
+function saveSettings() { try { localStorage.setItem('pixelSnapSettings', JSON.stringify({ view: S.view, facing: S.facing, shadows: S.shadows, scale: S.scale })); } catch (e) { /* fine */ } }
+function setSeg(id, value) { for (const b of $(id).children) b.setAttribute('aria-pressed', String(b.dataset.v) === String(value) ? 'true' : 'false'); }
+function opts() { return { cell: S.cell, follow: S.follow, colours: S.colours, transparent: S.transparent, shadows: S.shadows, wantView: S.view, wantFacing: S.facing }; }
+
+/* ------------------------------------------------------------------ the worker: all the heavy work happens off the page */
+function packResult(r, d) {
+  const out = {
+    found: r.found, gridStatus: r.gridStatus, gridNote: r.gridNote, px: r.px, py: r.py, flatness: r.flatness, colours: r.colours,
+    framing: { kind: r.framing.kind, borderUniform: r.framing.borderUniform, subjectShare: r.framing.subjectShare },
+    subject: r.subject, view: r.view, facing: r.facing, shadowRemoved: r.shadowRemoved, transparent: r.transparent,
+    shadow: { found: r.shadow.found, unsure: r.shadow.unsure, reason: r.shadow.reason, kind: r.shadow.kind, share: r.shadow.share, darkness: r.shadow.darkness, dx: r.shadow.dx },
+    bx: r.bx, by: r.by, decision: d, sprite: null,
+  };
+  const tr = [];
+  if (r.found && r.sprite) { out.sprite = { w: r.sprite.w, h: r.sprite.h, buf: r.sprite.data.buffer }; tr.push(r.sprite.data.buffer); }
+  return [out, tr];
+}
+const workerCode = document.getElementById('core-src').textContent + '\n;' + packResult.toString() + `
+;const cache = new Map();
+self.onmessage = e => {
+  const m = e.data;
+  try {
+    if (m.type === 'forget') { cache.delete(m.id); return; }
+    const img = { w: m.w, h: m.h, data: new Uint8ClampedArray(m.buffer) };
+    let an = cache.get(m.id);
+    if (!an) { an = SnapCore.analyse(img); cache.set(m.id, an); }
+    const r = SnapCore.rebuild(img, an, m.opts);
+    const d = SnapCore.decide(r, m.opts.wantView, m.opts.wantFacing);
+    const [out, tr] = packResult(r, d);
+    postMessage({ type: 'done', id: m.id, res: out }, tr);
+  } catch (err) { postMessage({ type: 'error', id: m.id, message: String((err && err.message) || err) }); }
+};`;
+let worker = null, mainThreadMode = false;
+const waiting = new Map(), localCache = new Map();
+function useMainThread(why) {
+  if (mainThreadMode) return;
+  mainThreadMode = true; worker = null;
+  console.warn('Running on the main thread: ' + why);
+  for (const [, w] of waiting) w.reject(new Error('retry'));
+  waiting.clear();
+}
+function startWorker() {
+  if (location.hash === '#no-worker') { useMainThread('forced by #no-worker'); return; }
+  try {
+    worker = new Worker(URL.createObjectURL(new Blob([workerCode], { type: 'text/javascript' })));
+  } catch (err) { useMainThread(String(err)); return; }
+  worker.onmessage = e => { const m = e.data, w = waiting.get(m.id); if (!w) return; waiting.delete(m.id); m.type === 'error' ? w.reject(new Error(m.message)) : w.resolve(m.res); };
+  worker.onerror = e => { e.preventDefault && e.preventDefault(); useMainThread(e.message || 'the worker could not start'); if (items.length) processAll(); };
+}
+function runInWorker(item, imageData) {
+  if (mainThreadMode || !worker) return runOnMainThread(item, imageData);
+  return new Promise((resolve, reject) => {
+    waiting.set(item.id, { resolve, reject });
+    const buf = imageData.data.buffer;
+    worker.postMessage({ type: 'run', id: item.id, w: imageData.width, h: imageData.height, buffer: buf, opts: opts() }, [buf]);
+  });
+}
+async function runOnMainThread(item, imageData) {
+  await new Promise(r => setTimeout(r, 30));                 // let the page paint between pictures
+  const img = { w: imageData.width, h: imageData.height, data: imageData.data };
+  let an = localCache.get(item.id);
+  if (!an) { an = SnapCore.analyse(img); localCache.set(item.id, an); }
+  const r = SnapCore.rebuild(img, an, opts());
+  return packResult(r, SnapCore.decide(r, opts().wantView, opts().wantFacing))[0];
+}
+
+/* ------------------------------------------------------------------ pictures */
+const items = [];
+let nextId = 1, generation = 0, selected = null, filter = null;
+
+async function decode(file) {
+  const bmp = await createImageBitmap(file);
+  const c = document.createElement('canvas'); c.width = bmp.width; c.height = bmp.height;
+  const ctx = c.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(bmp, 0, 0);
+  const data = ctx.getImageData(0, 0, c.width, c.height);
+  const k = Math.min(1, 240 / Math.max(c.width, c.height)), t = document.createElement('canvas');
+  t.width = Math.max(1, Math.round(c.width * k)); t.height = Math.max(1, Math.round(c.height * k));
+  t.getContext('2d').drawImage(bmp, 0, 0, t.width, t.height);
+  if (bmp.close) bmp.close();
+  return { data, thumb: t.toDataURL('image/png') };
+}
+
+function status(msg) { $('status').innerHTML = msg; }
+function esc(s) { return String(s).replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch])); }
+const fmt = (x, d) => Number(x).toFixed(d);
+
+async function processAll() {
+  const my = ++generation;
+  const todo = items.filter(it => it.file);
+  let done = 0;
+  for (const it of todo) {
+    if (my !== generation) return;
+    it.state = 'working'; render();
+    status('Working on <b>' + esc(it.name) + '</b> (' + (done + 1) + ' of ' + todo.length + ')…');
+    try {
+      const { data, thumb } = await decode(it.file);
+      it.thumb = it.thumb || thumb; it.w = data.width; it.h = data.height;
+      it.res = await runInWorker(it, data);
+      it.state = 'done'; it.error = null;
+      if (it.res.sprite) it.res.spriteUrl = spriteUrl(it.res.sprite, S.scale);
+    } catch (err) { it.state = 'error'; it.error = err.message; it.res = null; }
+    done++;
+    if (my !== generation) return;
+    render();
+    if (selected === it.id) showDetail();
+  }
+  if (my === generation) status(summaryLine());
+  render();
+}
+
+function summaryLine() {
+  const doneItems = items.filter(i => i.state === 'done');
+  if (!doneItems.length) return 'Choose pictures, or try the sample.';
+  const c = Object.fromEntries(FOLDERS.map(f => [f[0], 0]));
+  for (const i of doneItems) c[i.res.decision.bucket]++;
+  return '<b>' + doneItems.length + '</b> picture' + (doneItems.length === 1 ? '' : 's') + ': ' + FOLDERS.map(f => c[f[0]] + ' ' + f[1].toLowerCase()).join(', ') + '.';
+}
+
+function spriteUrl(sprite, scale) {
+  const c = document.createElement('canvas'); c.width = sprite.w; c.height = sprite.h;
+  c.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(sprite.buf.slice(0)), sprite.w, sprite.h), 0, 0);
+  let s = scale;
+  while (s > 1 && (sprite.w * s > 4096 || sprite.h * s > 4096)) s--;
+  const o = document.createElement('canvas'); o.width = sprite.w * s; o.height = sprite.h * s;
+  const x = o.getContext('2d'); x.imageSmoothingEnabled = false; x.drawImage(c, 0, 0, o.width, o.height);
+  return o.toDataURL('image/png');
+}
+
+/* ------------------------------------------------------------------ the cards */
+function oneLine(it) {
+  const r = it.res;
+  const bits = [r.subject.kind === 'unclear' ? 'unclear subject' : r.subject.kind];
+  bits.push(r.subject.kind === 'character' ? 'facing: can\'t tell' : r.view.kind);
+  if (r.gridStatus === 'weak') bits.push('weak grid');
+  return bits.join(' · ');
+}
+function render() {
+  $('resultsPanel').hidden = items.length === 0;
+  const counts = Object.fromEntries(FOLDERS.map(f => [f[0], 0]));
+  for (const it of items) if (it.state === 'done') counts[it.res.decision.bucket]++;
+  $('chips').innerHTML = FOLDERS.map(f => '<button type="button" class="chip f-' + f[0] + '" data-f="' + f[0] + '" aria-pressed="' + (filter === f[0]) + '" title="' + esc(f[2]) + '"><span class="dot"></span>' + f[1] + ' ' + counts[f[0]] + '</button>').join('');
+  $('cards').innerHTML = items.filter(it => !filter || (it.state === 'done' && it.res.decision.bucket === filter)).map(it => {
+    const b = it.state === 'done' ? it.res.decision.bucket : '';
+    const img = it.state === 'done' && it.res.spriteUrl && b === 'matches' ? it.res.spriteUrl : (it.thumb || '');
+    const tag = it.state === 'done' ? FOLDER_NAME[b] : it.state === 'error' ? 'Problem' : it.state === 'working' ? 'Working…' : 'Waiting';
+    const why = it.state === 'done' ? oneLine(it) : it.state === 'error' ? it.error : '';
+    return '<button type="button" class="card f-' + b + '" data-id="' + it.id + '"' + (selected === it.id ? ' aria-current="true"' : '') + '>' +
+      '<div class="thumb">' + (img ? '<img alt="" src="' + img + '">' : '') + '</div><div class="tag">' + tag + '</div>' +
+      '<div class="name">' + esc(it.name) + '</div><div class="why">' + esc(why) + '</div></button>';
+  }).join('') || '<p class="empty">Nothing in this folder.</p>';
+}
+$('chips').addEventListener('click', e => { const b = e.target.closest('.chip'); if (!b) return; filter = filter === b.dataset.f ? null : b.dataset.f; render(); });
+$('cards').addEventListener('click', e => { const c = e.target.closest('.card'); if (!c) return; selected = Number(c.dataset.id); render(); showDetail(); $('detail').scrollIntoView({ behavior: 'smooth', block: 'start' }); });
+
+/* ------------------------------------------------------------------ the picture in detail */
+async function showDetail() {
+  const it = items.find(i => i.id === selected);
+  if (!it || it.state !== 'done') { $('detail').hidden = true; return; }
+  const r = it.res, d = r.decision;
+  $('detail').hidden = false;
+  const v = $('verdict'); v.className = 'verdict f-' + d.bucket;
+  $('vTitle').textContent = FOLDER_NAME[d.bucket] + (d.weak ? ' (weak grid: check the result)' : '');
+  $('vWhy').textContent = d.reason;
+  const facts = [
+    ['What is it', r.subject.kind + ': ' + r.subject.reason],
+    [r.subject.kind === 'character' ? 'Facing' : 'View', r.subject.kind === 'character' ? "can't tell (" + r.facing.reason + ')' :
+      r.view.kind + ' (diagonals ' + Math.round(r.view.diagonal * 100) + '%, both directions ' + Math.round(r.view.weakerDiagonal * 100) + '%+, horizontals ' + Math.round(r.view.horizontal * 100) + '%, verticals ' + Math.round(r.view.vertical * 100) + '%)'],
+    ['Pixel grid', r.gridStatus + ': ' + r.gridNote],
+    ['Framing', r.framing.kind === 'isolated' ? 'a lone sprite on a plain ground' : r.framing.kind === 'scene' ? 'a whole scene' : 'unclear'],
+    ['Ground shadow', r.shadow.unsure ? "can't tell (" + r.shadow.reason + ')' : r.shadow.found ? r.shadow.kind + ' shadow, ' + Math.round(r.shadow.share * 100) + '% of the subject' + (S.shadows !== 'keep' ? (r.shadowRemoved ? '; removed' : '; kept') : '') : 'none (' + r.shadow.reason + ')'],
+    ['Sprite', r.sprite ? r.sprite.w + ' × ' + r.sprite.h + ' px, ' + r.colours + ' colors' + (r.transparent ? ', transparent background' : '') : 'nothing snapped'],
+  ];
+  $('facts').innerHTML = facts.map(f => '<li><b>' + esc(f[0]) + '</b><span>' + esc(f[1]) + '</span></li>').join('');
+  $('origCap').textContent = it.w + ' × ' + it.h + ' px · ' + it.name;
+  $('resCap').textContent = r.sprite ? 'Saved file: ' + (r.spriteSaved ? r.spriteSaved : '') : 'Nothing to save: no pixel grid was found. Type a pixel size above to pixelate it anyway.';
+  const img = $('result');
+  if (r.sprite) {
+    img.hidden = false; img.src = r.spriteUrl;
+    const probe = new Image(); probe.onload = () => { $('resCap').textContent = 'Saved file: ' + probe.width + ' × ' + probe.height + ' px'; }; probe.src = r.spriteUrl;
+  } else { img.removeAttribute('src'); img.hidden = true; }
+  const cl = r.facing && r.facing.clues && Object.keys(r.facing.clues).length ? r.facing.clues : null;
+  $('cluesBox').hidden = !cl || r.subject.kind !== 'character';
+  if (cl) $('clues').innerHTML = Object.entries(cl).map(([k, val]) => '<tr><td>' + esc(k.replace(/_/g, ' ')) + '</td><td>' + esc(val) + '</td></tr>').join('');
+  try {
+    const { data } = await decode(it.file);
+    drawOriginal(it, data);
+  } catch (err) { /* the original stays as it was */ }
+}
+function drawOriginal(it, imageData) {
+  const c = $('orig'), ctx = c.getContext('2d');
+  c.width = imageData.width; c.height = imageData.height;
+  ctx.putImageData(imageData, 0, 0);
+  const r = it.res;
+  if ($('overlay').checked && r.found && r.bx.length > 2) {
+    ctx.strokeStyle = 'rgba(255,40,120,.85)';
+    ctx.lineWidth = Math.max(1, Math.round(Math.max(c.width, c.height) / 500));
+    ctx.beginPath();
+    for (const x of r.bx.slice(1, -1)) { ctx.moveTo(x, 0); ctx.lineTo(x, c.height); }
+    for (const y of r.by.slice(1, -1)) { ctx.moveTo(0, y); ctx.lineTo(c.width, y); }
+    ctx.stroke();
+  }
+}
+$('overlay').addEventListener('change', () => showDetail());
+
+/* ------------------------------------------------------------------ the report */
+const REPORT_COLUMNS = ['file', 'folder', 'reason', 'subject', 'view', 'facing', 'facing_clues', 'grid', 'pixel_w', 'pixel_h', 'sprite_w', 'sprite_h', 'flatness', 'framing', 'shadow', 'shadow_kind', 'shadow_removed_pixels', 'colours', 'view_diagonal', 'view_horizontal', 'view_vertical'];
+function csvCell(v) { const s = String(v === null || v === undefined ? '' : v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }
+function reportCsv() {
+  const rows = items.filter(i => i.state === 'done').map(it => {
+    const r = it.res, f = r.facing;
+    return [it.name, r.decision.bucket, r.decision.reason, r.subject.kind, r.subject.kind === 'character' ? 'n/a (character)' : r.view.kind, f ? f.kind : 'not checked',
+      f && f.clues ? Object.entries(f.clues).map(([k, v]) => k + ' ' + v).join('; ') : '', r.gridStatus, fmt(r.px, 2), fmt(r.py, 2), r.sprite ? r.sprite.w : '', r.sprite ? r.sprite.h : '',
+      r.flatness === null ? '' : fmt(r.flatness, 3), r.framing.kind, r.shadow.unsure ? "can't tell" : (r.shadow.found ? r.shadow.kind : 'none'), r.shadow.found ? r.shadow.kind : '',
+      r.shadowRemoved, r.colours, fmt(r.view.diagonal, 3), fmt(r.view.horizontal, 3), fmt(r.view.vertical, 3)];
+  });
+  return [REPORT_COLUMNS, ...rows].map(r => r.map(csvCell).join(',')).join('\n');
+}
+$('copyCsv').addEventListener('click', async () => {
+  const text = reportCsv();
+  try { await navigator.clipboard.writeText(text); $('copyNote').textContent = 'Copied. Paste it into a spreadsheet or a notes app.'; }
+  catch (e) {
+    const t = document.createElement('textarea'); t.value = text; t.setAttribute('readonly', ''); t.style.cssText = 'width:100%;height:8em';
+    $('copyNote').textContent = 'Copying was blocked here. Select the text below and copy it by hand.';
+    $('copyNote').after(t); t.select();
+  }
+});
+
+/* ------------------------------------------------------------------ settings wiring */
+function changed() { saveSettings(); if (items.length) processAll(); }
+function wireSeg(id, key, parse) {
+  $(id).addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; S[key] = parse ? parse(b.dataset.v) : b.dataset.v; setSeg(id, b.dataset.v); if (key === 'scale') { rescale(); saveSettings(); } else changed(); });
+}
+function rescale() { for (const it of items) if (it.state === 'done' && it.res.sprite) it.res.spriteUrl = spriteUrl(it.res.sprite, S.scale); render(); if (selected) showDetail(); }
+wireSeg('segView', 'view'); wireSeg('segFacing', 'facing'); wireSeg('segShadows', 'shadows'); wireSeg('segScale', 'scale', Number);
+$('transparent').addEventListener('change', e => { S.transparent = e.target.checked; changed(); });
+$('wobble').addEventListener('change', e => { S.follow = e.target.checked; changed(); });
+let timer = null;
+$('colors').addEventListener('input', e => { S.colours = parseInt(e.target.value, 10); $('colorsOut').textContent = S.colours || 'off'; clearTimeout(timer); timer = setTimeout(changed, 300); });
+$('cell').addEventListener('input', e => { const v = parseFloat(e.target.value); S.cell = v > 0 ? v : null; clearTimeout(timer); timer = setTimeout(changed, 400); });
+function syncFacingHint() { $('facingHint').style.display = S.facing === 'either' ? 'none' : ''; }
+$('segFacing').addEventListener('click', syncFacingHint);
+
+/* ------------------------------------------------------------------ adding pictures */
+function addFiles(files) {
+  const list = [...files].filter(f => f.type.startsWith('image/') || /\.(png|jpe?g|webp|gif|bmp)$/i.test(f.name));
+  if (!list.length) { status('Those files are not pictures. Try PNG or JPG.'); return; }
+  for (const f of list) items.push({ id: nextId++, file: f, name: f.name, state: 'queued' });
+  render(); processAll();
+}
+$('file').addEventListener('change', e => { addFiles(e.target.files); e.target.value = ''; });
+$('clearBtn').addEventListener('click', () => { generation++; for (const it of items) { if (worker) worker.postMessage({ type: 'forget', id: it.id }); localCache.delete(it.id); } items.length = 0; selected = null; filter = null; $('detail').hidden = true; render(); status('Choose pictures, or try the sample.'); });
+const drop = $('drop');
+['dragenter', 'dragover'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add('over'); }));
+['dragleave', 'drop'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.remove('over'); }));
+drop.addEventListener('drop', e => addFiles(e.dataTransfer.files));
+
+/* the sample: a small mushroom sprite, enlarged with soft edges and noise, like an AI picture */
+function makeSample() {
+  const pal = { '.': [191, 227, 196], r: [216, 51, 58], w: [244, 240, 230], d: [42, 26, 46], s: [232, 207, 162], l: [201, 168, 120] };
+  const rows = ['................', '.....dddddd.....', '...ddrrrrrrdd...', '..drrwwrrrwwrd..', '.drrwwwwrrwwwrd.', '.drrrwwrrrrrrrd.', 'drwwrrrrrrwwwwrd', 'drwwwrrrrrwwwwrd', 'drrwwrrrrrrwwrrd', '.dddddddddddddd.', '.....dssssd.....', '....dsssssssd...', '....dsllssssd...', '....dsllssssd...', '....dssssssd....', '...dddddddddd...'];
+  const M = 3, N = 16 + 2 * M;                            // a margin of plain ground, as in a lone sprite
+  const small = document.createElement('canvas'); small.width = N; small.height = N;
+  const sc = small.getContext('2d'), id = sc.createImageData(N, N);
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    const inside = x >= M && x < M + 16 && y >= M && y < M + 16;
+    const c = inside ? (pal[[...rows[y - M].padEnd(16, '.').slice(0, 16)][x - M]] || pal['.']) : pal['.'], o = (y * N + x) * 4;
+    id.data[o] = c[0]; id.data[o + 1] = c[1]; id.data[o + 2] = c[2]; id.data[o + 3] = 255;
+  }
+  sc.putImageData(id, 0, 0);
+  const W = Math.round(N * 15.6), big = document.createElement('canvas'); big.width = W; big.height = W;
+  const bc = big.getContext('2d'); bc.imageSmoothingEnabled = false; bc.drawImage(small, 0, 0, W, W);
+  const soft = document.createElement('canvas'); soft.width = W; soft.height = W;
+  const sx = soft.getContext('2d'); sx.filter = 'blur(1.1px)'; sx.drawImage(big, 0, 0);
+  const d = sx.getImageData(0, 0, W, W); let seed = 12345;
+  const rnd = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296;
+  for (let i = 0; i < d.data.length; i += 4) for (let k = 0; k < 3; k++) d.data[i + k] = Math.max(0, Math.min(255, d.data[i + k] + (rnd() - 0.5) * 10));
+  sx.putImageData(d, 0, 0);
+  return new Promise(res => soft.toBlob(b => res(new File([b], 'sample_mushroom.png', { type: 'image/png' })), 'image/png'));
+}
+$('sampleBtn').addEventListener('click', async () => addFiles([await makeSample()]));
+
+/* ------------------------------------------------------------------ start */
+setSeg('segView', S.view); setSeg('segFacing', S.facing); setSeg('segShadows', S.shadows); setSeg('segScale', S.scale); syncFacingHint();
+startWorker();
+status('Choose pictures, or try the sample.');
+makeSample().then(f => addFiles([f]));
+</script>
+</body>
+</html>

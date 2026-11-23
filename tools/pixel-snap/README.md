@@ -2,12 +2,27 @@
 
 AI image tools such as Midjourney draw "pixel art" as a big picture of pixel art. Each chunky square you see is really dozens of real pixels with soft edges and small colour noise, and the grid wobbles. Pixel Snap finds the real grid and rebuilds the picture so **one visible pixel becomes one actual pixel**. The result can be any size (64×64, 67×45, whatever the picture really is), and it opens cleanly in a pixel editor.
 
-Two versions, same method:
+Two versions, same method, same answers (checked on 102 real pictures and on drawn test pictures):
 
 | File | Use it for |
-|------|------------|
-| `pixel-snap.html` | One picture at a time, on a phone or computer. Open the file in a browser. Works offline; nothing is uploaded. |
-| `pixel_snap.py` | Batches and scripts. Needs Python 3.9+, numpy and Pillow (`pip install numpy pillow`). |
+|---|---|
+| `pixel-snap.html` | A phone or computer, one picture or a whole batch. One self-contained file; works offline; nothing is uploaded. |
+| `pixel_snap.py` | Big batches and scripts. Needs Python 3.9+, numpy and Pillow (`pip install numpy pillow`). |
+
+## On a phone
+
+No server needed. Either:
+
+1. open the private page link you were given (it is the same file, served by Claude), or
+2. save `pixel-snap.html` to the phone (in the GitHub app or site, open the file, choose Download or "Save raw file") and open it from your Downloads in Chrome.
+
+Then tap **Choose pictures** (pick as many as you like), say what you need (view, facing, shadows, transparent background), and read where each picture goes. Tap a picture to see why, the grid it found over the original, and the finished sprite: press and hold it and choose **Download image**. **Copy report (CSV)** copies the full table to paste into a spreadsheet or notes app. The sprites are shown in the same four groups as the Python `--sort` folders: Matches, Wrong view, Can't tell, Not pixel art.
+
+The page does its work in a background worker so it stays responsive (about 1 to 3 seconds per picture on a computer; a phone is slower). If the browser blocks workers, it runs the same code on the main thread instead.
+
+## Building the page
+
+`web/core.js` is the method in JavaScript, mirroring the Python module by module; `web/build_web.py` copies every tuning number from `tuning.py` into it (so the two cannot drift apart) and inlines it into `web/app.template.html` to make `pixel-snap.html`. After changing Python or JavaScript, run `python web/build_web.py`. `python -m unittest test_web` checks that the browser version still gives the same answers as Python (drawn pictures, in a real headless browser) and that the page works at phone width, with and without the worker. It is skipped where Node and Playwright are not installed. `eval/web_parity.js` does the same comparison on a folder of real pictures.
 
 ## Python
 

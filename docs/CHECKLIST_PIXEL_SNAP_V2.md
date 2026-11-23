@@ -1,6 +1,6 @@
 # Pixel Snap v2: checklist
 
-Updated 2026-11-22 after slice C2. Plan: `PLAN_PIXEL_SNAP_V2.md`. Progress log: `PROGRESS_V2.md`.
+Updated 2026-11-23 after slices E1 and E2. Plan: `PLAN_PIXEL_SNAP_V2.md`. Progress log: `PROGRESS_V2.md`.
 
 ## Built (Python tool, branch `plan-pixel-snap-v2`)
 
@@ -13,12 +13,12 @@ Updated 2026-11-22 after slice C2. Plan: `PLAN_PIXEL_SNAP_V2.md`. Progress log: 
 - [x] **D1** Find ground shadows (7 of 10; white grounds "can't tell")
 - [x] **D2** Contact or cast, and `--shadows keep | remove-cast | remove-all`
 - [x] **C2** Character facing: **tried, did not work without AI.** Clues are measured and reported; verdict is "can't tell". Stop rule applied.
+- [x] **E1** Porting route decided: hand-port to JavaScript (Pyodide is blocked by the artifact sandbox and would need about 30 MB bundled)
+- [x] **E2** Browser page with everything above: batch of pictures, settings, sorting into the four groups, detail view, CSV report. Identical answers to Python on all 102 real pictures; tested at phone width, with and without the background worker. Not yet confirmed inside the claude.ai viewer by a person.
 
 ## Still to build
 
 - [ ] **B2** "Object" category. Blocked on the object tuning batch.
-- [ ] **E1** Decide how to port to the browser page (hand-port, or run the Python in the browser)
-- [ ] **E2** Browser page with all of the above. The phone page is still on the first version (grid-finder and old view check only).
 - [ ] **L1** Labelling game: questions, wording, how many answers per picture, catching careless players
 - [ ] **L2** Labelling game: build it and check it works for friends who are not signed in
 - [ ] **L3** Labelling game: export answers to the labels file
