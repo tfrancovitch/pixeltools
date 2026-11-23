@@ -19,6 +19,7 @@ python pixel_snap.py picture.png --colors 16      # also limit the palette
 python pixel_snap.py picture.png --no-follow      # assume a perfectly straight grid
 python pixel_snap.py *.png --check-only           # only report each picture's view; save nothing
 python pixel_snap.py *.png --skip-isometric       # convert everything except isometric pictures
+python pixel_snap.py in/*.png --sort sorted --want-view orthogonal   # sort a whole batch into folders (see below)
 python pixel_snap.py sprite.png --transparent     # also make the plain background transparent
 python pixel_snap.py *.png --shadows remove-cast  # drop cast (sun-angle) shadows, keep small contact shadows
 python pixel_snap.py *.png --shadows remove-all   # drop every ground shadow
@@ -27,6 +28,26 @@ python pixel_snap.py *.png --shadows remove-all   # drop every ground shadow
 Every line of output starts with what the picture is: `[CHARACTER]`, `[BUILDING]`, `[SCENE]` or `[UNCLEAR]`. For anything that is not a character, the line also gives the view (isometric, orthogonal or unclear). Characters are judged on which way they face, not on isometric or orthogonal; that check is not built yet, so the line says so.
 
 From Python code: `pixel_snap.snap_image(PIL_image)` returns a `Result` whose `.rgba` is the sprite.
+
+## Sorting a batch
+
+`--sort FOLDER` looks at every picture, decides where it belongs, and puts it there with a `report.csv` of every measurement:
+
+| Folder | Meaning | What it holds |
+|---|---|---|
+| `matches/` | Pixel art with the view (or facing) you asked for | The finished, snapped sprite (`_snapped.png`; `_snapped_WEAK.png` when the grid was weak) |
+| `mismatches/` | Pixel art in the wrong view: you wanted straight-on and it is isometric, or the reverse | A copy of the original, so you can look and decide |
+| `cant-tell/` | The view or facing could not be judged | A copy of the original |
+| `not-pixel-art/` | No usable pixel grid: painted, smooth, or already true size | A copy of the original |
+
+Two independent settings say what you want:
+
+- `--want-view orthogonal | isometric | either` applies to buildings, objects and scenes (everything that is not a character).
+- `--want-facing diagonal | cardinal | either` applies to characters. The facing check is not built yet, so a character is "can't tell" whenever a facing is wanted; with `either` it goes to `matches/`.
+
+A game can want diagonal-facing characters in an orthographic world, so the two do not affect each other. The other options (`--scale`, `--transparent`, `--shadows`, `--colors`) apply to the saved sprites. `--check-only --sort FOLDER` writes only the report. If a picture is both the wrong view and not pixel art, it goes in `not-pixel-art/` (the report still says its view). Pictures with the same file name from different folders are both kept (`-2`, `-3`, ...).
+
+Tested on the 102 pictures with `--want-view orthogonal`: 89 matches, 5 mismatches (exactly the isometric buildings and scenes that have a pixel grid: 0089, 0090, 0091, 0095, 0096), 3 can't-tell (two chibi characters and one character on a full field), 5 not pixel art (four smooth anime pictures and the painted isometric shop 0088). No picture labelled isometric landed in `matches/`.
 
 ## What is it? (character, building, scene)
 

@@ -17,7 +17,8 @@ Needs Python 3.9+, numpy and Pillow.
     python pixel_snap.py picture.png --cell 12.5     # you tell it the pixel size
     python pixel_snap.py picture.png --colors 16     # also limit the palette
     python pixel_snap.py *.png --skip-isometric      # leave out isometric pictures
-    python pixel_snap.py *.png --check-only          # just report which are isometric
+    python pixel_snap.py *.png --check-only          # just report what each picture is and its view
+    python pixel_snap.py folder/*.png --sort sorted --want-view orthogonal   # sort a batch into folders
     python pixel_snap.py sprite.png --transparent    # also make a plain background transparent
     python pixel_snap.py *.png --shadows remove-cast # drop cast (sun-angle) shadows, keep small contact shadows
 
@@ -36,6 +37,7 @@ from PIL import Image
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # so tuning.py is found even in python -I
 import framing as F  # noqa: E402
 import shadow as SH  # noqa: E402
+import sorting as SORT  # noqa: E402
 import subject as SUBJ  # noqa: E402
 import viewcheck as V  # noqa: E402
 import tuning as T  # noqa: E402
@@ -558,6 +560,58 @@ def snap_image(img: Image.Image, cell: float | None = None, follow: bool = True,
 # Command line
 # --------------------------------------------------------------------------
 
+def run_sorted(args) -> int:
+    """Batch mode: decide a folder for every picture, save or copy it there, and write report.csv."""
+    import csv
+    import shutil
+    root = args.sort
+    if not args.check_only:
+        for b in SORT.BUCKETS:
+            (root / b).mkdir(parents=True, exist_ok=True)
+    else:
+        root.mkdir(parents=True, exist_ok=True)
+    rows, counts, status = [], {b: 0 for b in SORT.BUCKETS}, 0
+
+    def free_name(folder: Path, name: str) -> Path:
+        dest, n = folder / name, 2
+        while dest.exists():
+            dest = folder / f"{Path(name).stem}-{n}{Path(name).suffix}"
+            n += 1
+        return dest
+
+    for path in args.inputs:
+        try:
+            res = snap_image(Image.open(path), args.cell, not args.no_follow, args.colours, args.transparent, args.shadows)
+        except Exception as exc:
+            print(f"{path}: could not read ({exc})", file=sys.stderr)
+            status = 1
+            continue
+        d = SORT.decide(res, args.want_view, args.want_facing)
+        counts[d.bucket] += 1
+        saved = ""
+        if not args.check_only:
+            folder = root / d.bucket
+            if d.bucket == "matches":
+                w, h = res.size
+                out = Image.fromarray(res.rgba, "RGBA")
+                if args.scale > 1:
+                    out = out.resize((w * args.scale, h * args.scale), Image.NEAREST)
+                dest = free_name(folder, f"{path.stem}_snapped{'_WEAK' if d.weak else ''}.png")
+                out.save(dest)
+            else:
+                dest = free_name(folder, path.name)
+                shutil.copy2(path, dest)
+            saved = str(dest.relative_to(root))
+        rows.append(SORT.report_row(path, res, d, saved))
+        print(f"[{res.subject.kind.upper()}] {path.name}: {d.bucket}. {d.reason}")
+    with open(root / "report.csv", "w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=SORT.REPORT_COLUMNS)
+        w.writeheader()
+        w.writerows(rows)
+    print("\n" + ", ".join(f"{b}: {n}" for b, n in counts.items()) + f"  (report: {root / 'report.csv'})")
+    return status
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="Shrink an AI pixel-art image so one visible pixel becomes one real pixel.")
     ap.add_argument("inputs", nargs="+", type=Path, help="image files to convert")
@@ -569,10 +623,18 @@ def main(argv=None) -> int:
                     help="ground shadows: keep them all (default), remove cast shadows but keep a small contact shadow, or remove all")
     ap.add_argument("--transparent", action="store_true", help="make the background transparent (lone sprites on a plain background only)")
     ap.add_argument("--skip-isometric", action="store_true", help="do not save pictures that look isometric (for when you need straight-on art)")
-    ap.add_argument("--check-only", action="store_true", help="only report the view (isometric / orthogonal / unclear); save nothing")
+    ap.add_argument("--check-only", action="store_true", help="only report what each picture is and its view; save nothing")
+    ap.add_argument("--want-view", choices=SORT.WANT_VIEW, default="either",
+                    help="for buildings, objects and scenes: the view you need. Used with --sort")
+    ap.add_argument("--want-facing", choices=SORT.WANT_FACING, default="either",
+                    help="for characters: the facing you need (the facing check is not built yet, so a character is 'cant-tell'). Used with --sort")
+    ap.add_argument("--sort", type=Path, metavar="FOLDER",
+                    help="sort a batch into FOLDER/matches, mismatches, cant-tell and not-pixel-art, with a report.csv of every measurement")
     ap.add_argument("--scale", type=int, default=1, help="enlarge the saved picture by this whole number, without blur")
     args = ap.parse_args(argv)
 
+    if args.sort:
+        return run_sorted(args)
     many = len(args.inputs) > 1
     if many and args.output:
         args.output.mkdir(parents=True, exist_ok=True)
