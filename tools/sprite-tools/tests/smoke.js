@@ -10,7 +10,7 @@ const url = 'file://' + path.join(__dirname, '..', 'pages', tool + '.html') + (n
 const STEPS = {
   turn: { tap: false, button: 'Flip left-right' },
   fill: { tap: [0.5, 0.05], button: 'Fill' },
-  replace: { tap: [0.5, 0.3], button: 'Replace' },
+  replace: { tap: [0.5, 0.55], button: 'Replace' },
   flatten: { tap: false, button: 'Flatten' },
 };
 (async () => {
@@ -50,6 +50,17 @@ const STEPS = {
     const st = await page.textContent('#status');
     const n = parseInt(st.replace(/,/g, ''), 10);
     check(n > 2000, 'fill background: most of the sample ground is filled (' + st + ')');
+  }
+  if (tool === 'replace') {   // a palette swap typed into the box, with no tap needed
+    await page.click('#undoBtn');
+    await page.fill('#c_map_text', '#c82828 #2828c8\n; a comment\n#e2b28c -> #00c800');
+    await page.click('button:has-text("Replace")');
+    await page.waitForFunction(() => /pixels changed/.test(document.getElementById('status').textContent));
+    check(parseInt((await page.textContent('#status')).replace(/,/g, ''), 10) > 500, 'a palette swap from the list works');
+    await page.fill('#c_map_text', 'nonsense');
+    await page.click('button:has-text("Replace")');
+    await page.waitForFunction(() => /not a pair of colours/.test(document.getElementById('status').textContent));
+    check(true, 'a bad swap list is explained in plain words');
   }
   await page.click('#beforeBtn');
   check(await page.evaluate(() => document.getElementById('shown').src) === before, '"Show before" shows the original');

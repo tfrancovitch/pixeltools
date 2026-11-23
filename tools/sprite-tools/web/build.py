@@ -39,6 +39,22 @@ PAGES = {
         "pointHelp": "Tap the picture where you want to fill, or choose \"Fill the whole background\".",
         "actions": [{"label": "Fill", "primary": True}],
     },
+    "replace": {
+        "title": "Replace colour",
+        "lede": "Change one colour, and every shade close to it, into another. Or paste a list of pairs to swap a whole palette at once.",
+        "controls": [
+            {"id": "from", "type": "colour", "label": "Colour to change", "value": "", "optional": True, "hint": "Leave empty and tap the picture to take the colour from a pixel. Write #rrggbb."},
+            {"id": "to", "type": "colour", "label": "Change into", "value": "#3070c8", "hint": "Write #00000000 for transparent."},
+            {"id": "tolerance", "type": "range", "label": "How close counts as the same colour", "min": 0, "max": 100, "step": 1, "value": 8, "unit": "%"},
+            {"id": "connected", "type": "check", "label": "Only the connected area around the tapped point", "value": False},
+            {"id": "corners", "type": "check", "label": "Count corner-touching pixels as connected", "value": False},
+            {"id": "map_text", "type": "text", "label": "Palette swap (optional)", "placeholder": "#c83030 #3070c8\n#e2b48c #00c800", "hint": "One pair per line: the old colour, then the new one. When this box has pairs, the settings above are ignored."},
+        ],
+        "point": True, "pointNeeded": False,
+        "pointHelp": "Tap the picture to take the colour to change from a pixel, or write it in the box.",
+        "actions": [{"label": "Replace", "primary": True}],
+        "mapIgnores": ["from", "to", "connected", "corners"],
+    },
     "flatten": {
         "title": "Flatten",
         "lede": "The opposite of dithering: makes each area one even colour and the edges between areas sharp. Three passes, each one you can switch off.",

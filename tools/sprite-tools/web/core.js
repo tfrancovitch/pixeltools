@@ -270,6 +270,72 @@ tools.flatten = {
   },
 };
 
+/* ---------------------------------------------------------------- replace */
+function parseColour(text) {                // #rrggbb, #rrggbbaa, or r,g,b[,a]
+  const s = text.trim();
+  const bad = () => new Error("'" + text + "' is not a colour. Write #rrggbb, #rrggbbaa, or r,g,b (0 to 255), for example #ff0000 or 255,0,0.");
+  if (s.startsWith('#')) {
+    const h = s.slice(1);
+    if (/^[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/.test(h)) { const v = []; for (let i = 0; i < h.length; i += 2) v.push(parseInt(h.slice(i, i + 2), 16)); return [v[0], v[1], v[2], v.length === 4 ? v[3] : 255]; }
+  } else {
+    const parts = s.split(',').map(p => p.trim());
+    if ((parts.length === 3 || parts.length === 4) && parts.every(p => /^\d{1,3}$/.test(p) && Number(p) <= 255)) { const v = parts.map(Number); return [v[0], v[1], v[2], v.length === 4 ? v[3] : 255]; }
+  }
+  throw bad();
+}
+function parseMap(text) {
+  const pairs = [];
+  text.split(/\r\n|\r|\n/).forEach((raw, k) => {
+    const line = raw.trim(), n = k + 1;
+    if (!line || line.startsWith(';') || line.startsWith('//')) return;
+    const arrow = line.includes('->') || line.includes('=>');
+    const parts = arrow ? line.replace(/=>/g, '->').split('->').map(p => p.trim()) : line.split(/\s+/);
+    if (parts.length !== 2) throw new Error('Line ' + n + " of the map is not a pair of colours: '" + line + "'. Write one pair per line, like #aabbcc #112233.");
+    try { pairs.push([parseColour(parts[0]), parseColour(parts[1])]); } catch (e) { throw new Error('Line ' + n + ' of the map: ' + e.message); }
+  });
+  if (!pairs.length) throw new Error('The map has no colour pairs. Write one pair per line, like #aabbcc #112233.');
+  return pairs;
+}
+tools.replace = {
+  apply(img, opts) {
+    const w = img.w, h = img.h, n = w * h;
+    const tol = opts.tolerance == null ? T.REPLACE_TOLERANCE : Number(opts.tolerance);
+    const cut2 = cutoffSq(tol);
+    const f = normalised(img).data, out = new Uint8ClampedArray(img.data);
+    const mask = new Uint8Array(n);
+    let pairs = opts.map || null, extra = {};
+    if (opts.map_text != null) pairs = parseMap(opts.map_text);
+    if (pairs !== null) {
+      if (['from', 'to', 'at'].some(k => opts[k] != null) || opts.connected) throw new Error('--map already says what to change into what; do not combine it with --from, --to, --at or --connected.');
+      if (!pairs.length) throw new Error('The map has no colour pairs. Write one pair per line, like #aabbcc #112233.');
+      const froms = pairs.map(p => cleanColour(p[0])), tos = pairs.map(p => cleanColour(p[1])), used = new Set();
+      for (let i = 0; i < n; i++) {
+        let best = -1, bd = Infinity;
+        for (let k = 0; k < froms.length; k++) { const a = f[i * 4] - froms[k][0], b = f[i * 4 + 1] - froms[k][1], c = f[i * 4 + 2] - froms[k][2], e = f[i * 4 + 3] - froms[k][3]; const d = a * a + b * b + c * c + e * e; if (d < bd) { bd = d; best = k; } }
+        if (bd <= cut2) { mask[i] = 1; used.add(best); out[i * 4] = tos[best][0]; out[i * 4 + 1] = tos[best][1]; out[i * 4 + 2] = tos[best][2]; out[i * 4 + 3] = tos[best][3]; }
+      }
+      extra = { pairs: pairs.length, pairs_used: used.size };
+    } else {
+      if (opts.to == null) throw new Error('Say what to change it into: --to COLOUR.');
+      const src = opts.from, at = opts.at;
+      if (src != null && at != null) throw new Error('Use either --from (a colour) or --at (a point to take the colour from), not both.');
+      if (src == null && at == null) throw new Error('Say which colour to change: --from COLOUR, or --at x,y to take it from the picture.');
+      if (opts.connected && at == null) throw new Error('--connected needs --at (the area around that point).');
+      let ref, s = -1;
+      if (at != null) { const [x, y] = checkPoint(img, at); s = y * w + x; ref = [f[s * 4], f[s * 4 + 1], f[s * 4 + 2], f[s * 4 + 3]]; } else ref = cleanColour(src);
+      const cand = new Uint8Array(n);
+      for (let i = 0; i < n; i++) { const a = f[i * 4] - ref[0], b = f[i * 4 + 1] - ref[1], c = f[i * 4 + 2] - ref[2], e = f[i * 4 + 3] - ref[3]; cand[i] = a * a + b * b + c * c + e * e <= cut2 ? 1 : 0; }
+      const m = opts.connected ? grow(w, h, [s], (p, q) => cand[q] === 1, !!opts.corners) : cand;
+      const to = cleanColour(opts.to);
+      for (let i = 0; i < n; i++) if (m[i]) { mask[i] = 1; out[i * 4] = to[0]; out[i * 4 + 1] = to[1]; out[i * 4 + 2] = to[2]; out[i * 4 + 3] = to[3]; }
+    }
+    let replaced = 0;
+    for (let i = 0; i < n; i++) replaced += mask[i];
+    const res = { w, h, data: out };
+    return [res, Object.assign({ pixels_replaced: replaced, pixels_changed: changedPixels(img, res) }, extra)];
+  },
+};
+
 /*TOOLS_HERE*/
 
 /* ---------------------------------------------------------------- the one entry point */
@@ -281,5 +347,5 @@ function run(name, img, opts) {
   return { img: out, info };
 }
 
-root.SpriteCore = { run, tools, T, VERSION, countColours, changedPixels };
+root.SpriteCore = { run, tools, T, VERSION, countColours, changedPixels, parseColour, parseMap };
 })(typeof self !== 'undefined' ? self : globalThis);

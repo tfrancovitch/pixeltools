@@ -17,7 +17,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
-TOOLS_WITH_PAGES = ["turn", "fill", "flatten"]
+TOOLS_WITH_PAGES = ["turn", "fill", "flatten", "replace"]
 
 
 def node_env():

@@ -24,9 +24,9 @@ from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from spritetools import __version__, core, fill, flatten, turn  # noqa: E402
+from spritetools import __version__, core, fill, flatten, replace, turn  # noqa: E402
 
-MODULES = {m.NAME: m for m in (fill, flatten, turn)}   # the order here is the order of --list
+MODULES = {m.NAME: m for m in (fill, flatten, replace, turn)}   # the order here is the order of --list
 
 
 # ---------------------------------------------------------------- options, per tool
@@ -64,10 +64,10 @@ def opts_from_args(name: str, a: argparse.Namespace) -> dict:
         return {"at": core.parse_point(a.at) if a.at else None, "colour": core.parse_colour(a.colour) if a.colour else None,
                 "tolerance": a.tolerance, "everywhere": a.everywhere, "background": a.background, "corners": a.corners}
     if name == "replace":
-        pairs = replace.read_map(a.map) if a.map else None
+        text = replace.read_map(a.map) if a.map else None
         return {"from": core.parse_colour(a.from_) if a.from_ else None, "at": core.parse_point(a.at) if a.at else None,
                 "to": core.parse_colour(a.to) if a.to else None, "tolerance": a.tolerance, "connected": a.connected,
-                "corners": a.corners, "map": pairs}
+                "corners": a.corners, "map_text": text}
     if name == "flatten":
         return {"tolerance": a.tolerance, "at": core.parse_point(a.at) if a.at else None, "merge": not a.no_merge,
                 "edges": a.edges, "min_speck": a.min_speck}

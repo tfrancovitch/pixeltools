@@ -204,3 +204,26 @@ CASES += [
     ("flatten point outside is refused", "flatten", "sky", {"at": [99, 99]}),
     ("flatten one pixel", "flatten", "tiny", {}),
 ]
+
+
+SWAP = "; swap the shirt and the trousers\n#c82c30 -> #2c30c8\n// and the skin goes green\n232,180,140 0,200,0\n"
+CASES += [
+    ("replace by colour", "replace", "character", {"from": [200, 44, 48, 255], "to": [0, 255, 0, 255]}),
+    ("replace by point", "replace", "damaged", {"at": [20, 26], "to": [1, 2, 3, 255], "tolerance": 12}),
+    ("replace only the connected area", "replace", "character", {"at": [20, 26], "to": [9, 9, 9, 255], "connected": True, "tolerance": 60}),
+    ("replace connected with corners", "replace", "diagonal", {"at": [1, 1], "to": [0, 255, 0, 255], "connected": True, "corners": True}),
+    ("replace connected without corners", "replace", "diagonal", {"at": [1, 1], "to": [0, 255, 0, 255], "connected": True}),
+    ("replace with transparent", "replace", "character", {"from": [120, 170, 110, 255], "to": [0, 0, 0, 0]}),
+    ("replace transparent pixels", "replace", "alpha", {"from": [0, 0, 0, 0], "to": [255, 255, 255, 255], "tolerance": 0}),
+    ("replace with a map", "replace", "character", {"map": [[[200, 44, 48, 255], [44, 48, 200, 255]], [[110, 80, 40, 255], [255, 0, 255, 255]]]}),
+    ("replace with map text", "replace", "character", {"map_text": SWAP}),
+    ("replace map is a swap, not a chain", "replace", "stripes", {"map": [[[255, 0, 0, 255], [0, 255, 0, 255]], [[0, 255, 0, 255], [255, 0, 0, 255]]], "tolerance": 0}),
+    ("replace map nearest pair wins", "replace", "stripes", {"map": [[[250, 10, 10, 255], [1, 1, 1, 255]], [[255, 0, 0, 255], [2, 2, 2, 255]]], "tolerance": 5}),
+    ("replace without --to is refused", "replace", "sky", {"from": [1, 2, 3, 255]}),
+    ("replace without a colour is refused", "replace", "sky", {"to": [1, 2, 3, 255]}),
+    ("replace --connected without --at is refused", "replace", "sky", {"from": [1, 2, 3, 255], "to": [1, 2, 3, 255], "connected": True}),
+    ("replace map and from is refused", "replace", "sky", {"from": [1, 2, 3, 255], "map": [[[1, 2, 3, 255], [4, 5, 6, 255]]]}),
+    ("replace a bad map line is refused", "replace", "sky", {"map_text": "#ff0000 #00ff00\nnonsense"}),
+    ("replace a bad map colour is refused", "replace", "sky", {"map_text": "#ff0000 #00ff0"}),
+    ("replace an empty map is refused", "replace", "sky", {"map_text": "; nothing here\n"}),
+]

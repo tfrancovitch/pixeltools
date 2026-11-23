@@ -73,6 +73,26 @@ What is proven, and what is not: on drawn sprites (a flat sprite enlarged, blurr
 
 Page: `pages/flatten.html` (switches for each pass; tap the picture to flatten one area).
 
+## replace
+
+Change one colour, and everything close to it, into another. With `--map`, swap a whole palette in one go.
+
+```
+python sprite.py replace sprite.png --from '#c83030' --to '#3070c8'
+python sprite.py replace sprite.png --at 30,28 --to 0,200,0 --tolerance 12 --connected    # only the area around 30,28
+python sprite.py replace sprite.png --map swap.txt                                         # a palette swap
+```
+
+- `--from COLOUR` or `--at x,y`: the colour to change (use `--at` to take it from a pixel).
+- `--to COLOUR`: the new colour. Everything within the tolerance becomes exactly this colour (so replacing also flattens the shades it covers). `#00000000` makes pixels transparent.
+- `--tolerance PCT`: how close counts as the same colour (default 8).
+- `--connected`: only the area touching `--at`, not every close pixel in the picture. `--corners` also counts corner-touching pixels as connected.
+- `--map FILE`: many pairs at once. One pair per line, the old colour then the new one, separated by spaces or `->`: `#c83030 #3070c8`. Empty lines and lines starting with `;` or `//` are ignored. Every pixel goes to the **nearest** listed colour that is within the tolerance (the first listed wins a tie), and all pairs are applied to the original picture at once, so a swap (red to green and green to red) trades places instead of chaining. `--map` cannot be mixed with `--from`, `--to`, `--at` or `--connected`.
+
+`--json` fields: `pixels_replaced`, `pixels_changed`, and for `--map` also `pairs` and `pairs_used` (how many pairs found something).
+
+Page: `pages/replace.html` (tap a pixel or write the colour; or paste a list of pairs into the swap box).
+
 ## Tests
 
 ```

@@ -211,12 +211,13 @@ function collect(extra) {
   const o = Object.assign({}, extra);
   for (const c of CONFIG.controls) {
     const v = values[c.id];
-    if (c.type === 'colour') { const rgba = hexToRgba(v); if (!rgba) throw new Error('"' + v + '" is not a colour. Write it like #ff0000 or #ff000080.'); o[c.id] = rgba; }
-    else if (c.type === 'text') o[c.id] = v;
+    if (c.type === 'colour') { if (c.optional && v.trim() === '') o[c.id] = null; else { const rgba = hexToRgba(v); if (!rgba) throw new Error('"' + v + '" is not a colour. Write it like #ff0000 or #ff000080.'); o[c.id] = rgba; } }
+    else if (c.type === 'text') o[c.id] = v.trim() === '' ? null : v;
     else if (c.type === 'seg' && v === '') o[c.id] = null;
     else o[c.id] = v;
   }
-  if (CONFIG.point) o.at = (CONFIG.pointIgnoredWhen && values[CONFIG.pointIgnoredWhen]) ? null : point;
+  if (CONFIG.mapIgnores && o.map_text) for (const k of CONFIG.mapIgnores) o[k] = null;
+  if (CONFIG.point) o.at = (CONFIG.pointIgnoredWhen && values[CONFIG.pointIgnoredWhen]) || (CONFIG.mapIgnores && o.map_text) ? null : point;
   return CONFIG.prepare ? CONFIG.prepare(o) : o;
 }
 async function apply(extra) {
@@ -231,10 +232,15 @@ async function apply(extra) {
     history.push(r.img); if (history.length > MAX_UNDO + 1) history.splice(1, 1);
     showBefore = false;
     status(describe(r.info));
-  } catch (err) { status(err.message, true); }
+  } catch (err) { status(plain(err.message), true); }
   document.querySelectorAll('button').forEach(b => { b.disabled = b.dataset.was === 'true'; });
   busy = false; show();
 }
+const PLAIN = [[/--from COLOUR/g, 'the "Colour to change" box'], [/--from \(a colour\)/g, 'the "Colour to change" box'], [/--at x,y \(a point on the area to fill\)/g, 'tapping the picture'], [/--at x,y to take it from the picture/g, 'tapping the picture'],
+  [/--at \(a point to take the colour from\)/g, 'tapping the picture'], [/--at \(a start point\)/g, 'tapping the picture'], [/--at x,y/g, 'tapping the picture'], [/--at/g, 'a tapped point'], [/--to COLOUR/g, 'the "Change into" box'], [/--to/g, 'the "Change into" box'],
+  [/--background \(start from the border\)/g, '"Fill the whole background"'], [/use --background/g, 'tick "Fill the whole background"'], [/--background/g, '"Fill the whole background"'],
+  [/--connected/g, '"Only the connected area"'], [/--map/g, 'the palette swap list'], [/--min-speck/g, 'the speck size']];
+const plain = msg => PLAIN.reduce((m, [re, to]) => m.replace(re, to), msg);
 function describe(info) {
   const n = v => Number(v).toLocaleString('en');
   return (info.pixels_changed === 0 ? 'Nothing changed. ' : n(info.pixels_changed) + ' pixels changed. ') + 'Colours: ' + n(info.colours_before) + ' → ' + n(info.colours_after) + '.' + (info.note ? ' ' + info.note : '');
