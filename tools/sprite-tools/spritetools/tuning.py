@@ -29,7 +29,7 @@ REPLACE_TOLERANCE = 8.0
 # ---- flatten ----------------------------------------------------------------------------
 FLATTEN_TOLERANCE = 6.0        # percent: "the same colour" (plan section 6)
 FLATTEN_MIN_SPECK = 2          # patches of at most this many pixels may be absorbed
-FLATTEN_EDGE_LINE = 0.5        # an edge blend lies within this many tolerances of the line between two colours
+FLATTEN_EDGE_LINE = 1.0        # an edge blend lies within this many tolerances of the line between two colours
 FLATTEN_EDGE_ROUNDS = 3        # sharpen edges at most this many times
 FLATTEN_SPECK_REACH = 25.0     # percent: a speck is absorbed only if it is this close to its surroundings
                                # (so a one-pixel eye or highlight of a very different colour is kept)

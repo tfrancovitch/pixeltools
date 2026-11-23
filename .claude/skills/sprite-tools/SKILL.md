@@ -14,3 +14,4 @@ Set up once: `pip install -r tools/sprite-tools/requirements.txt` (Python 3.9+).
 Tools:
 - `turn --flip h|v`: mirror a sprite exactly.
 - `fill --at x,y --colour C [--tolerance PCT] [--everywhere] [--corners]`: bucket fill that tolerates noisy near-shades. `fill --background [--colour C]`: starts from the border and fills the whole ground (default colour: transparent). Extra JSON: `pixels_filled`, `background_colour`.
+- `flatten [--tolerance PCT] [--at x,y] [--no-merge] [--no-edges] [--min-speck N]`: make noisy areas one even colour and sharpen edges (three passes, each switchable). Run it on a Pixel Snap output, not on the raw big picture. Extra JSON: `pass1_pixels`, `pass2_pixels`, `pass3_pixels`. Not yet checked on real Midjourney sprites: look at a before/after sheet before trusting it on details.

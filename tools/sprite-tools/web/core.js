@@ -145,6 +145,131 @@ tools.fill = {
   },
 };
 
+/* ---------------------------------------------------------------- flatten */
+tools.flatten = {
+  apply(img, opts) {
+    const w = img.w, h = img.h, n = w * h;
+    const tol = opts.tolerance == null ? T.FLATTEN_TOLERANCE : Number(opts.tolerance);
+    const cut2 = cutoffSq(tol);
+    const doMerge = opts.merge !== false, doEdges = opts.edges !== false;
+    const limit = opts.min_speck == null ? T.FLATTEN_MIN_SPECK : Math.trunc(Number(opts.min_speck));
+    if (limit < 0) throw new Error('--min-speck must be 0 or more (0 skips the speck pass).');
+    const at = opts.at;
+    let flat = normalised(img).data, start = Int32Array.from(flat);
+    flat = Int32Array.from(flat);
+    const pk = (a, i) => a[i * 4] * 16777216 + a[i * 4 + 1] * 65536 + a[i * 4 + 2] * 256 + a[i * 4 + 3];
+    const d2 = (a, i, b, j) => { const p = a[i * 4] - b[j * 4], q = a[i * 4 + 1] - b[j * 4 + 1], r = a[i * 4 + 2] - b[j * 4 + 2], t = a[i * 4 + 3] - b[j * 4 + 3]; return p * p + q * q + r * r + t * t; };
+    const setPk = (a, i, v) => { a[i * 4] = Math.floor(v / 16777216) & 255; a[i * 4 + 1] = Math.floor(v / 65536) & 255; a[i * 4 + 2] = Math.floor(v / 256) & 255; a[i * 4 + 3] = v & 255; };
+    let region = null, changeOk = new Uint8Array(n).fill(1);
+    if (at != null) {
+      const [x, y] = checkPoint(img, at), seed = y * w + x;
+      const cand = new Uint8Array(n);
+      for (let i = 0; i < n; i++) cand[i] = d2(flat, i, flat, seed) <= cut2 ? 1 : 0;
+      region = grow(w, h, [seed], (p, q) => cand[q] === 1, false);
+      changeOk = new Uint8Array(n);
+      for (let i = 0; i < n; i++) if (region[i]) {
+        const y0 = (i / w) | 0, x0 = i - y0 * w;
+        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { const yy = y0 + dy, xx = x0 + dx; if (yy >= 0 && yy < h && xx >= 0 && xx < w) changeOk[yy * w + xx] = 1; }
+      }
+    }
+    const differs = (a, b) => { for (let i = 0; i < n; i++) if (a[i * 4] !== b[i * 4] || a[i * 4 + 1] !== b[i * 4 + 1] || a[i * 4 + 2] !== b[i * 4 + 2] || a[i * 4 + 3] !== b[i * 4 + 3]) return true; return false; };
+    const countDiff = (a, b) => { let c = 0; for (let i = 0; i < n; i++) if (a[i * 4] !== b[i * 4] || a[i * 4 + 1] !== b[i * 4 + 1] || a[i * 4 + 2] !== b[i * 4 + 2] || a[i * 4 + 3] !== b[i * 4 + 3]) c++; return c; };
+    // pass 1: merge near colours
+    if (doMerge) {
+      if (region === null) {
+        const counts = new Map();
+        for (let i = 0; i < n; i++) { const k = pk(flat, i); counts.set(k, (counts.get(k) || 0) + 1); }
+        const order = [...counts.keys()].sort((a, b) => counts.get(b) - counts.get(a) || a - b);
+        const leaders = [], target = new Map();
+        const col = k => [Math.floor(k / 16777216) & 255, Math.floor(k / 65536) & 255, Math.floor(k / 256) & 255, k & 255];
+        for (const k of order) {
+          const c = col(k);
+          let bestJ = -1, bestD = Infinity;
+          for (let j = 0; j < leaders.length; j++) { const l = leaders[j].c; const d = (l[0] - c[0]) ** 2 + (l[1] - c[1]) ** 2 + (l[2] - c[2]) ** 2 + (l[3] - c[3]) ** 2; if (d < bestD) { bestD = d; bestJ = j; } }
+          if (bestJ >= 0 && bestD <= cut2) target.set(k, leaders[bestJ].k);
+          else { leaders.push({ k, c }); target.set(k, k); }
+        }
+        for (let i = 0; i < n; i++) setPk(flat, i, target.get(pk(flat, i)));
+      } else {
+        const counts = new Map();
+        for (let i = 0; i < n; i++) if (region[i]) { const k = pk(flat, i); counts.set(k, (counts.get(k) || 0) + 1); }
+        let mode = null;
+        for (const [k, c] of counts) if (mode === null || c > counts.get(mode) || (c === counts.get(mode) && k < mode)) mode = k;
+        for (let i = 0; i < n; i++) if (region[i]) setPk(flat, i, mode);
+      }
+    }
+    const p1 = countDiff(flat, start);
+    // pass 2: sharpen edges
+    let p2 = 0;
+    if (doEdges) {
+      const lim = cut2 * T.FLATTEN_EDGE_LINE * T.FLATTEN_EDGE_LINE;
+      for (let round = 0; round < T.FLATTEN_EDGE_ROUNDS; round++) {
+        const out = Int32Array.from(flat);
+        let moved = 0;
+        for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+          const i = y * w + x;
+          if (!changeOk[i]) continue;
+          const c = pk(flat, i);
+          let best = Infinity, pick = -1;
+          for (const [dy1, dx1, dy2, dx2] of [[-1, 0, 1, 0], [0, -1, 0, 1]]) {
+            const y1 = y + dy1, x1 = x + dx1, y2 = y + dy2, x2 = x + dx2;
+            if (y1 < 0 || y1 >= h || x1 < 0 || x1 >= w || y2 < 0 || y2 >= h || x2 < 0 || x2 >= w) continue;
+            const ia = y1 * w + x1, ib = y2 * w + x2, na = pk(flat, ia), nb = pk(flat, ib);
+            if (na === nb || na === c || nb === c) continue;
+            let len2 = 0, dot = 0, ac2 = 0;
+            for (let k = 0; k < 4; k++) { const ab = flat[ib * 4 + k] - flat[ia * 4 + k], ac = flat[i * 4 + k] - flat[ia * 4 + k]; len2 += ab * ab; dot += ac * ab; ac2 += ac * ac; }
+            const perp = ac2 * len2 - dot * dot;
+            if (!(dot > 0 && dot < len2) || !(perp <= lim * len2)) continue;
+            const score = perp / len2;
+            if (score < best) { best = score; const twice = 2 * dot; pick = (twice < len2 || (twice === len2 && na < nb)) ? na : nb; }
+          }
+          if (pick >= 0) { setPk(out, i, pick); if (pk(out, i) !== c) moved++; }
+        }
+        flat = out; p2 += moved;
+        if (moved === 0) break;
+      }
+    }
+    // pass 3: absorb specks
+    const before3 = Int32Array.from(flat);
+    if (limit > 0) {
+      const reach2 = cutoffSq(T.FLATTEN_SPECK_REACH), out = Int32Array.from(flat), seen = new Uint8Array(n);
+      for (let s0 = 0; s0 < n; s0++) {
+        if (seen[s0]) continue;
+        const colour = pk(before3, s0), cells = [s0], mark = new Set([s0]);
+        seen[s0] = 1;
+        for (let k = 0; k < cells.length; k++) {
+          const p = cells[k], y = (p / w) | 0, x = p - y * w;
+          for (const [ny, nx] of [[y - 1, x], [y + 1, x], [y, x - 1], [y, x + 1]]) {
+            if (ny < 0 || ny >= h || nx < 0 || nx >= w) continue;
+            const q = ny * w + nx;
+            if (!seen[q] && pk(before3, q) === colour) { seen[q] = 1; cells.push(q); }
+          }
+        }
+        if (cells.length > limit) continue;
+        for (const c of cells) mark.add(c);
+        const around = new Set();
+        for (const p of cells) {
+          const y = (p / w) | 0, x = p - y * w;
+          for (const [ny, nx] of [[y - 1, x], [y + 1, x], [y, x - 1], [y, x + 1]]) {
+            if (ny < 0 || ny >= h || nx < 0 || nx >= w) continue;
+            const q = ny * w + nx;
+            if (!mark.has(q)) around.add(pk(before3, q));
+          }
+        }
+        if (around.size !== 1 || !cells.every(c => changeOk[c])) continue;
+        const target = [...around][0], t = [Math.floor(target / 16777216) & 255, Math.floor(target / 65536) & 255, Math.floor(target / 256) & 255, target & 255];
+        let d = 0;
+        for (let k = 0; k < 4; k++) { const e = t[k] - before3[s0 * 4 + k]; d += e * e; }
+        if (d <= reach2) for (const c of cells) setPk(out, c, target);
+      }
+      flat = out;
+    }
+    const p3 = countDiff(flat, before3);
+    const res = { w, h, data: Uint8ClampedArray.from(flat) };
+    return [res, { pixels_changed: changedPixels(img, res), pass1_pixels: p1, pass2_pixels: p2, pass3_pixels: p3 }];
+  },
+};
+
 /*TOOLS_HERE*/
 
 /* ---------------------------------------------------------------- the one entry point */

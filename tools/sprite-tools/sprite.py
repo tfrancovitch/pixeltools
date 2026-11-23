@@ -24,9 +24,9 @@ from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from spritetools import __version__, core, fill, turn  # noqa: E402
+from spritetools import __version__, core, fill, flatten, turn  # noqa: E402
 
-MODULES = {m.NAME: m for m in (fill, turn)}   # the order here is the order of --list
+MODULES = {m.NAME: m for m in (fill, flatten, turn)}   # the order here is the order of --list
 
 
 # ---------------------------------------------------------------- options, per tool

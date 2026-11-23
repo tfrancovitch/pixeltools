@@ -39,6 +39,19 @@ PAGES = {
         "pointHelp": "Tap the picture where you want to fill, or choose \"Fill the whole background\".",
         "actions": [{"label": "Fill", "primary": True}],
     },
+    "flatten": {
+        "title": "Flatten",
+        "lede": "The opposite of dithering: makes each area one even colour and the edges between areas sharp. Three passes, each one you can switch off.",
+        "controls": [
+            {"id": "tolerance", "type": "range", "label": "What counts as the same colour", "min": 0, "max": 30, "step": 1, "value": 6, "unit": "%"},
+            {"id": "merge", "type": "check", "label": "1. Merge near colours into one", "value": True},
+            {"id": "edges", "type": "check", "label": "2. Sharpen edges (give in-between pixels to the nearer side)", "value": True},
+            {"id": "min_speck", "type": "range", "label": "3. Absorb lone stray patches up to this many pixels (0 = off)", "min": 0, "max": 10, "step": 1, "value": 2, "unit": " px"},
+        ],
+        "point": True, "pointNeeded": False,
+        "pointHelp": "Optional: tap the picture to flatten only that area (a red shirt, say) and its edges. With no tap, the whole picture is flattened.",
+        "actions": [{"label": "Flatten", "primary": True}],
+    },
 }
 ORDER = ["fill", "replace", "flatten", "turn"]   # the order on the hub page
 

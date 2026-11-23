@@ -51,6 +51,28 @@ Limits: a sprite part that is very close in colour to the ground (skin against a
 
 Page: `pages/fill.html` (tap the picture, or tick "fill the whole background").
 
+## flatten
+
+The opposite of dithering. AI pictures are never flat: a red shirt is twenty slightly different reds, and the edge between the shirt and an arm is a band of in-between colours. Flatten makes areas one even colour and the edges sharp, in three passes. Each pass can be switched off, and each is tested alone.
+
+```
+python sprite.py flatten sprite.png                        # the whole picture
+python sprite.py flatten sprite.png --at 30,28             # only the shirt around 30,28 (and its edge)
+python sprite.py flatten sprite.png --no-edges --min-speck 0 --tolerance 8     # only pass 1
+```
+
+1. **Merge near colours.** Colours within `--tolerance` (default 6) of each other become one: the most used colour in a group wins. Gradients are not chained into one colour.
+2. **Sharpen edges** (`--edges` / `--no-edges`, default on). A pixel squeezed between two different areas (above and below, or left and right) whose colour lies on the straight line between them is a mix; it is given to the nearer side. Repeated up to three times. A pixel that is not a mix is never touched, and a shading step that is an area of its own (a dark band of the shirt) is kept, because it is not squeezed between two areas.
+3. **Absorb specks** (`--min-speck N`, default 2, 0 turns it off). A patch of up to N pixels, touching only one other colour, takes that colour. To keep a one-pixel eye or highlight, it is only absorbed when its colour is also close to its surroundings (within 25 percent).
+
+With `--at x,y` only the connected area of the touched colour (within tolerance) is merged, and only that area and its one-pixel edge may change; everything else is left exactly alone.
+
+`--json` fields: `pixels_changed`, `pass1_pixels`, `pass2_pixels`, `pass3_pixels`, `colours_before`, `colours_after`.
+
+What is proven, and what is not: on drawn sprites (a flat sprite enlarged, blurred, noised, JPEG-damaged, shrunk back with Pixel Snap) flatten returns the original colours on at least 97 percent of the pixels and the original number of colours exactly (24 of 24 runs). On a harsher damage of our own (half the edge pixels are mixes, plus noise and strays) it repairs most but not all: about 90 to 95 percent right, and it removes over 97 percent of the stray colours. **It has not been tried on real Midjourney pictures**: that part of the plan's gate is open, and the numbers in `tuning.py` are provisional. A before/after picture of the drawn tests is in `docs/handbacks/evidence/`.
+
+Page: `pages/flatten.html` (switches for each pass; tap the picture to flatten one area).
+
 ## Tests
 
 ```
