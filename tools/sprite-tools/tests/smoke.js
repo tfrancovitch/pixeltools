@@ -42,6 +42,15 @@ const STEPS = {
   const after = await page.evaluate(() => document.getElementById('shown').src);
   check(after !== before, 'the tool changed the picture');
   check(!status.includes('Tap the picture') && !/is not a/.test(status), 'the tool ran without a complaint');
+  if (tool === 'fill') {   // the owner's real problem: the whole noisy ground in one press, with no tap
+    await page.click('#undoBtn');
+    await page.click('#c_background');
+    await page.click('button:has-text("Fill")');
+    await page.waitForFunction(() => /pixels changed/.test(document.getElementById('status').textContent));
+    const st = await page.textContent('#status');
+    const n = parseInt(st.replace(/,/g, ''), 10);
+    check(n > 2000, 'fill background: most of the sample ground is filled (' + st + ')');
+  }
   await page.click('#beforeBtn');
   check(await page.evaluate(() => document.getElementById('shown').src) === before, '"Show before" shows the original');
   await page.click('#beforeBtn');

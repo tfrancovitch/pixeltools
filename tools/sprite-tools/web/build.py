@@ -17,14 +17,27 @@ from spritetools import __version__, tuning  # noqa: E402
 
 # One entry per tool that has a page. Controls are drawn by the shared page template (web/page.template.html).
 # type: seg (pick one), range (percent slider), check, colour, text (a box for a list).
-POINT = {"optional": "Tap the picture to choose a point (optional).", "required": "Tap the picture to choose a point."}
 PAGES = {
     "turn": {
         "title": "Turn",
         "lede": "Flip a sprite left-right or top-bottom. Exact: no blur, no smoothing.",
         "actions": [{"label": "Flip left-right", "opts": {"flip": "h"}}, {"label": "Flip top-bottom", "opts": {"flip": "v"}}],
         "controls": [],
-        "point": None,
+        "point": False,
+    },
+    "fill": {
+        "title": "Fill",
+        "lede": "Bucket fill that copes with noisy AI pictures: it fills every close shade, not only the exact colour. Or fill a whole background in one tap.",
+        "controls": [
+            {"id": "colour", "type": "colour", "label": "Fill with", "value": "#00000000", "hint": "Write #00000000 for transparent. Colours are #rrggbb or #rrggbbaa."},
+            {"id": "tolerance", "type": "range", "label": "How close counts as the same colour", "min": 0, "max": 100, "step": 1, "value": 10, "unit": "%"},
+            {"id": "background", "type": "check", "label": "Fill the whole background (start from the border; no tap needed)", "value": False},
+            {"id": "everywhere", "type": "check", "label": "Fill every close pixel in the picture, not only the connected area", "value": False},
+            {"id": "corners", "type": "check", "label": "Count corner-touching pixels as connected", "value": False},
+        ],
+        "point": True, "pointNeeded": True, "pointIgnoredWhen": "background",
+        "pointHelp": "Tap the picture where you want to fill, or choose \"Fill the whole background\".",
+        "actions": [{"label": "Fill", "primary": True}],
     },
 }
 ORDER = ["fill", "replace", "flatten", "turn"]   # the order on the hub page
@@ -47,7 +60,6 @@ def style() -> str:
 
 def page(tool: str, cfg: dict, core: str, template: str) -> str:
     config = dict(cfg, tool=tool, version=__version__)
-    config["pointHelp"] = POINT.get(cfg["point"]) if cfg.get("point") else None
     return (template.replace("/*STYLE*/", style()).replace("/*TITLE*/", cfg["title"]).replace("/*LEDE*/", cfg["lede"]).replace("/*VERSION*/", __version__)
             .replace("/*CONFIG*/", json.dumps(config).replace("</", "<\\/")).replace("/*CORE_JS*/", core.replace("</script", "<\\/script")))
 

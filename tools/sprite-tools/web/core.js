@@ -78,6 +78,73 @@ tools.turn = {
   },
 };
 
+/* ---------------------------------------------------------------- fill */
+const hexOf = c => '#' + c.map(v => (v < 16 ? '0' : '') + v.toString(16)).join('');
+tools.fill = {
+  apply(img, opts) {
+    const w = img.w, h = img.h, n = w * h;
+    const tol = opts.tolerance == null ? T.FILL_TOLERANCE : Number(opts.tolerance);
+    const cut2 = cutoffSq(tol);
+    const colour = cleanColour(opts.colour == null ? [0, 0, 0, 0] : opts.colour);
+    const corners = !!opts.corners, at = opts.at;
+    const f = normalised(img).data;
+    const d2 = (i, j) => { const a = f[i * 4] - f[j * 4], b = f[i * 4 + 1] - f[j * 4 + 1], c = f[i * 4 + 2] - f[j * 4 + 2], e = f[i * 4 + 3] - f[j * 4 + 3]; return a * a + b * b + c * c + e * e; };
+    const d2c = (i, r) => { const a = f[i * 4] - r[0], b = f[i * 4 + 1] - r[1], c = f[i * 4 + 2] - r[2], e = f[i * 4 + 3] - r[3]; return a * a + b * b + c * c + e * e; };
+    let mask, extra = {};
+    if (opts.background) {
+      if (at != null) throw new Error('Use either --at (a start point) or --background (start from the border), not both.');
+      let band = Math.max(T.BG_BAND_MIN, Math.floor(T.BG_BAND * Math.min(h, w) + 0.5));
+      band = Math.min(band, Math.max(1, Math.floor(Math.min(h, w) / 2)));
+      const ring = [];
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (y < band || y >= h - band || x < band || x >= w - band) ring.push(y * w + x);
+      const ref = [0, 1, 2, 3].map(c => { const v = Int32Array.from(ring, i => f[i * 4 + c]).sort(); return v[Math.floor(ring.length / 2)]; });
+      const range2 = cut2 * T.BG_RANGE * T.BG_RANGE, first2 = cut2 * T.BG_FIT_FIRST * T.BG_FIT_FIRST;
+      const fit = idx => {                       // same plain float steps as fit_plane in fill.py
+        let n = idx.length, sx = 0, sy = 0, sxx = 0, sxy = 0, syy = 0;
+        for (const i of idx) { const y = Math.floor(i / w), x = i - y * w; sx += x; sy += y; sxx += x * x; sxy += x * y; syy += y * y; }
+        const det = n * (sxx * syy - sxy * sxy) - sx * (sx * syy - sxy * sy) + sy * (sx * sxy - sxx * sy);
+        return [0, 1, 2, 3].map(ch => {
+          if (det === 0) return [ref[ch], 0, 0];
+          let sc = 0, sxc = 0, syc = 0;
+          for (const i of idx) { const y = Math.floor(i / w), x = i - y * w, c = f[i * 4 + ch]; sc += c; sxc += x * c; syc += y * c; }
+          const a = (sc * (sxx * syy - sxy * sxy) - sx * (sxc * syy - sxy * syc) + sy * (sxc * sxy - sxx * syc)) / det;
+          const b = (n * (sxc * syy - sxy * syc) - sc * (sx * syy - sxy * sy) + sy * (sx * syc - sxc * sy)) / det;
+          const cc = (n * (sxx * syc - sxc * sxy) - sx * (sx * syc - sxc * sy) + sc * (sx * sxy - sxx * sy)) / det;
+          return [a, b, cc];
+        });
+      };
+      const planeD2 = (i, rows) => {
+        const y = Math.floor(i / w), x = i - y * w; let t = 0;
+        for (let ch = 0; ch < 4; ch++) { const d = f[i * 4 + ch] - ((rows[ch][0] + rows[ch][1] * x) + rows[ch][2] * y); t = t + d * d; }
+        return t;
+      };
+      const firstKept = ring.filter(i => d2c(i, ref) <= first2);
+      let rows = fit(firstKept.length ? firstKept : ring);
+      for (let r = 0; r < T.BG_FIT_ROUNDS; r++) {
+        const again = ring.filter(i => planeD2(i, rows) <= range2);
+        if (again.length < 0.2 * ring.length) break;
+        rows = fit(again);
+      }
+      const dBg = new Float64Array(n);
+      for (let i = 0; i < n; i++) dBg[i] = planeD2(i, rows);
+      const seeds = ring.filter(i => dBg[i] <= range2);
+      mask = grow(w, h, seeds, (p, q) => d2(p, q) <= cut2 && dBg[q] <= range2, corners);
+      extra.background_colour = hexOf(ref);
+    } else {
+      if (at == null) throw new Error('Say where to start: --at x,y (a point on the area to fill), or use --background.');
+      const [x, y] = checkPoint(img, at), s = y * w + x;
+      const cand = new Uint8Array(n);
+      for (let i = 0; i < n; i++) cand[i] = d2(i, s) <= cut2 ? 1 : 0;
+      mask = opts.everywhere ? cand : grow(w, h, [s], (p, q) => cand[q] === 1, corners);
+    }
+    const out = new Uint8ClampedArray(img.data);
+    let filled = 0;
+    for (let i = 0; i < n; i++) if (mask[i]) { filled++; out[i * 4] = colour[0]; out[i * 4 + 1] = colour[1]; out[i * 4 + 2] = colour[2]; out[i * 4 + 3] = colour[3]; }
+    const res = { w, h, data: out };
+    return [res, Object.assign({ pixels_filled: filled, pixels_changed: changedPixels(img, res) }, extra)];
+  },
+};
+
 /*TOOLS_HERE*/
 
 /* ---------------------------------------------------------------- the one entry point */

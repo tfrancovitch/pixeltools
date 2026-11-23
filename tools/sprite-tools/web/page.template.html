@@ -165,7 +165,7 @@ $('stage').addEventListener('click', e => {
   const x = Math.min(cur.w - 1, Math.max(0, Math.floor((e.clientX - r.left) / r.width * cur.w)));
   const y = Math.min(cur.h - 1, Math.max(0, Math.floor((e.clientY - r.top) / r.height * cur.h)));
   point = [x, y]; show();
-  $('pointHelp').textContent = 'Point chosen: ' + x + ',' + y + '. Tap again to move it.' + (CONFIG.point === 'optional' ? ' Press "Clear point" to use the whole picture.' : '');
+  $('pointHelp').textContent = 'Point chosen: ' + x + ',' + y + '. Tap again to move it.' + '';
   $('clearPoint') && ($('clearPoint').hidden = false);
 });
 
@@ -202,7 +202,7 @@ function buildControls() {
     const b = document.createElement('button'); b.type = 'button'; b.textContent = a.label; if (!CONFIG.actions || a.primary) b.className = 'primary';
     b.addEventListener('click', () => apply(a.opts || {})); acts.appendChild(b);
   }
-  if (CONFIG.point === 'optional') {
+  if (CONFIG.point && !CONFIG.pointNeeded) {
     const b = document.createElement('button'); b.type = 'button'; b.id = 'clearPoint'; b.hidden = true; b.textContent = 'Clear point';
     b.addEventListener('click', () => { point = null; b.hidden = true; $('pointHelp').textContent = CONFIG.pointHelp; show(); }); acts.appendChild(b);
   }
@@ -216,14 +216,14 @@ function collect(extra) {
     else if (c.type === 'seg' && v === '') o[c.id] = null;
     else o[c.id] = v;
   }
-  if (CONFIG.point) o.at = point;
+  if (CONFIG.point) o.at = (CONFIG.pointIgnoredWhen && values[CONFIG.pointIgnoredWhen]) ? null : point;
   return CONFIG.prepare ? CONFIG.prepare(o) : o;
 }
 async function apply(extra) {
   if (busy || !history.length) return;
   let opts;
   try { opts = collect(extra); } catch (err) { status(err.message, true); return; }
-  if (CONFIG.point === 'required' && !opts.at && !(CONFIG.pointOptionalIf && opts[CONFIG.pointOptionalIf])) { status('Tap the picture first, to choose a point.', true); return; }
+  if (CONFIG.pointNeeded && CONFIG.point && !opts.at && !(CONFIG.pointIgnoredWhen && values[CONFIG.pointIgnoredWhen])) { status('Tap the picture first, to choose a point.', true); return; }
   busy = true; document.querySelectorAll('button').forEach(b => { b.dataset.was = b.disabled; b.disabled = true; });
   status('Working…');
   try {

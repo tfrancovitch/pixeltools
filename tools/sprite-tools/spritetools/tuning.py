@@ -18,8 +18,10 @@ MAX_DISTANCE = 510.0           # largest possible RGBA distance: sqrt(4 * 255^2)
 FILL_TOLERANCE = 10.0          # percent: close enough to count as the same colour
 BG_BAND = 0.02                 # --background: the border ring is this share of the short side ...
 BG_BAND_MIN = 2                # ... but at least this many pixels
-BG_DRIFT = 3.0                 # --background: the ground may drift from its border colour by this many tolerances
-                               # (a gradient sky), but it can only step by one tolerance from pixel to pixel
+BG_RANGE = 1.5                 # --background: a pixel is ground when it is within this many tolerances of the gradient
+                               # fitted to the border, and it joins only by a step of at most one tolerance
+BG_FIT_FIRST = 3.0             # the first fit uses border pixels within this many tolerances of the middle border colour
+BG_FIT_ROUNDS = 2              # then the gradient is refitted this many times on the border pixels that fit
 
 # ---- replace ----------------------------------------------------------------------------
 REPLACE_TOLERANCE = 8.0

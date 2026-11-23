@@ -13,3 +13,4 @@ Set up once: `pip install -r tools/sprite-tools/requirements.txt` (Python 3.9+).
 
 Tools:
 - `turn --flip h|v`: mirror a sprite exactly.
+- `fill --at x,y --colour C [--tolerance PCT] [--everywhere] [--corners]`: bucket fill that tolerates noisy near-shades. `fill --background [--colour C]`: starts from the border and fills the whole ground (default colour: transparent). Extra JSON: `pixels_filled`, `background_colour`.
