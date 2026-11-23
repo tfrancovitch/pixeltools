@@ -19,7 +19,6 @@ function pyRound(x) {                       // Python's round(): halves go to th
   if (d > 0.5) return f + 1;
   return f % 2 === 0 ? f : f + 1;
 }
-function ceilDiv(a, b) { return Math.ceil(a / b); }
 function median(values) {                   // numpy.median
   const a = Float64Array.from(values).sort();
   const n = a.length, m = n >> 1;
@@ -933,6 +932,8 @@ function classifyFacing(framing, subject, shadow) {
 /* ---------------------------------------------------------------- putting it together */
 
 function analyse(img) {
+  if (Math.min(img.w, img.h) < T.MIN_PICTURE_SIDE)
+    throw new Error('picture too small to analyse (' + img.w + 'x' + img.h + '): it needs at least ' + T.MIN_PICTURE_SIDE + ' pixels on each side');
   const ex = [edgeProfile(img, 0, [1]), edgeProfile(img, 1, [1])];
   const wx = [edgeProfile(img, 0, T.EDGE_GAPS), edgeProfile(img, 1, T.EDGE_GAPS)];
   let dx = detectAxis(wx[0], ex[0]), dy = detectAxis(wx[1], ex[1]);
@@ -1030,5 +1031,5 @@ function decide(res, wantView, wantFacing) {
   return { bucket: 'mismatches', reason: res.subject.kind + '; you asked for ' + wantView + ' but it is ' + seen, weak: false };
 }
 
-root.SnapCore = { T, normalisedForView, gauss, analyse, rebuild, snap, decide, BUCKETS, classifyFraming, classifyView, findShadow, estimateBackground };
+root.SnapCore = { VERSION: '/*VERSION*/', T, normalisedForView, gauss, analyse, rebuild, snap, decide, BUCKETS, classifyFraming, classifyView, findShadow, estimateBackground };
 })(typeof self !== 'undefined' ? self : this);

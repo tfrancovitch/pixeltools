@@ -28,6 +28,7 @@ The method matches the browser version (pixel-snap.html) in this folder.
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -43,6 +44,8 @@ import sorting as SORT  # noqa: E402
 import subject as SUBJ  # noqa: E402
 import viewcheck as V  # noqa: E402
 import tuning as T  # noqa: E402
+
+__version__ = "1.0.0"
 
 __all__ = ["analyse", "rebuild", "snap_image", "classify_view", "Analysis", "Result", "ViewVerdict", "Framing", "classify_subject", "find_shadow"]
 Framing = F.Framing
@@ -467,6 +470,8 @@ def _weak_ok(axis: Axis, n: int) -> bool:
 
 
 def analyse(rgba: np.ndarray) -> Analysis:
+    if min(rgba.shape[:2]) < T.MIN_PICTURE_SIDE:
+        raise ValueError(f"picture too small to analyse ({rgba.shape[1]}x{rgba.shape[0]}): it needs at least {T.MIN_PICTURE_SIDE} pixels on each side")
     rgb = rgba[..., :3]
     ex, ey = edge_profile(rgb, 0), edge_profile(rgb, 1)
     wx, wy = edge_profile(rgb, 0, T.EDGE_GAPS), edge_profile(rgb, 1, T.EDGE_GAPS)
@@ -552,17 +557,54 @@ def rebuild(rgba: np.ndarray, an: Analysis, cell: float | None = None,
     return Result(out, bx, by, dx.p, dy.p, found, raw, count_colours(out), view, framing, removed, status, note, subject, shadow, FC.classify_facing(framing, subject, shadow), flat, shadow_removed)
 
 
+def to_rgba(img: Image.Image) -> np.ndarray:
+    """Any Pillow image as 8-bit RGBA. Phone photos are turned upright (EXIF), and 16-bit or float pictures are
+    scaled down to 8 bits (Pillow would otherwise clip them to white)."""
+    from PIL import ImageOps
+    img = ImageOps.exif_transpose(img)
+    if img.mode in ("I;16", "I;16L", "I;16B", "I;16N", "I", "F"):
+        a = np.asarray(img, dtype=np.float64)
+        top = 65535.0 if img.mode.startswith("I;16") else max(float(a.max()), 255.0)
+        img = Image.fromarray(np.clip(a / top * 255.0 + 0.5, 0, 255).astype(np.uint8), "L")
+    return np.array(img.convert("RGBA"))
+
+
 def snap_image(img: Image.Image, cell: float | None = None, follow: bool = True,
                colours: int = 0, transparent: bool = False, shadows: str = "keep") -> Result:
     """Convenience: Pillow image in, Result out. shadows: "keep", "remove-cast" (keep a contact shadow)
     or "remove-all"."""
-    rgba = np.array(img.convert("RGBA"))
+    rgba = to_rgba(img)
     return rebuild(rgba, analyse(rgba), cell, follow, colours, transparent, shadows)
 
 
 # --------------------------------------------------------------------------
 # Command line
 # --------------------------------------------------------------------------
+
+def _snap_path(job):
+    """One picture, for the worker processes: (result, None) or (None, the error message)."""
+    path, cell, follow, colours, transparent, shadows = job
+    try:
+        with Image.open(path) as im:
+            return snap_image(im, cell, follow, colours, transparent, shadows), None
+    except Exception as exc:        # unreadable file or picture too small: report it and carry on
+        return None, str(exc)
+
+
+def _each_result(args):
+    """Yield (path, result, error) for every input, in order; with --jobs N, N pictures are worked on at once."""
+    jobs = [(p, args.cell, not args.no_follow, args.colours, args.transparent, args.shadows) for p in args.inputs]
+    workers = (os.cpu_count() or 1) if args.jobs == 0 else args.jobs
+    if workers > 1 and len(jobs) > 1:
+        from multiprocessing import Pool
+        with Pool(min(workers, len(jobs))) as pool:
+            for path, (res, err) in zip(args.inputs, pool.imap(_snap_path, jobs)):
+                yield path, res, err
+    else:
+        for path, job in zip(args.inputs, jobs):
+            res, err = _snap_path(job)
+            yield path, res, err
+
 
 def brief_line(path: Path, res, tail: str = "") -> str:
     """One short line for a picture (about 100 characters): what it is, the grid, the view, the shadow."""
@@ -592,11 +634,9 @@ def run_sorted(args) -> int:
             n += 1
         return dest
 
-    for path in args.inputs:
-        try:
-            res = snap_image(Image.open(path), args.cell, not args.no_follow, args.colours, args.transparent, args.shadows)
-        except Exception as exc:
-            print(f"{path}: could not read ({exc})", file=sys.stderr)
+    for path, res, err in _each_result(args):
+        if err:
+            print(f"{path}: could not read ({err})", file=sys.stderr)
             status = 1
             continue
         d = SORT.decide(res, args.want_view, args.want_facing)
@@ -629,7 +669,12 @@ def run_sorted(args) -> int:
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(description="Shrink an AI pixel-art image so one visible pixel becomes one real pixel.")
+    ap = argparse.ArgumentParser(
+        description="Shrink an AI pixel-art image so one visible pixel becomes one real pixel, and sort a batch by what it is.",
+        epilog="examples:\n  pixel_snap.py pic.png\n  pixel_snap.py in/*.png --sort out --want-view orthogonal --brief --jobs 4\n"
+               "  pixel_snap.py pic.png --shadows remove-cast --transparent --colors 24\n(full documentation: tools/pixel-snap/README.md)",
+        formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--version", action="version", version=f"pixel_snap {__version__}")
     ap.add_argument("inputs", nargs="+", type=Path, help="image files to convert")
     ap.add_argument("-o", "--output", type=Path, help="output file (one input) or folder (several inputs)")
     ap.add_argument("--cell", type=float, help="pixel size in the original, if you want to override auto-detection")
@@ -643,7 +688,9 @@ def main(argv=None) -> int:
     ap.add_argument("--want-view", choices=SORT.WANT_VIEW, default="either",
                     help="for buildings, objects and scenes: the view you need. Used with --sort")
     ap.add_argument("--want-facing", choices=SORT.WANT_FACING, default="either",
-                    help="for characters: the facing you need (the facing check is not built yet, so a character is 'cant-tell'). Used with --sort")
+                    help="for characters: the facing you need. The tool cannot judge facing, so with a facing chosen every character goes to cant-tell. Used with --sort")
+    ap.add_argument("--jobs", type=int, default=1, metavar="N",
+                    help="work on N pictures at once (0 = one per processor core); a big batch finishes several times sooner")
     ap.add_argument("--brief", action="store_true",
                     help="short output, for scripts and AI sessions: one line per picture (with --sort, only pictures that are not matches, plus totals)")
     ap.add_argument("--sort", type=Path, metavar="FOLDER",
@@ -657,11 +704,9 @@ def main(argv=None) -> int:
     if many and args.output:
         args.output.mkdir(parents=True, exist_ok=True)
     status = 0
-    for path in args.inputs:
-        try:
-            res = snap_image(Image.open(path), args.cell, not args.no_follow, args.colours, args.transparent, args.shadows)
-        except Exception as exc:  # unreadable file: report and go on
-            print(f"{path}: could not read ({exc})", file=sys.stderr)
+    for path, res, err in _each_result(args):
+        if err:                  # unreadable file: report and go on
+            print(f"{path}: could not read ({err})", file=sys.stderr)
             status = 1
             continue
         w, h = res.size

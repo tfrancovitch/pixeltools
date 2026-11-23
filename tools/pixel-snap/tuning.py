@@ -2,7 +2,7 @@
 # Copyright (C) 2026 the pixeltools contributors. Licensed under the GNU GPL v3 or later.
 #
 # Change a number here, then run eval/scorecard.py to see what it did to the real test
-# pictures. Do not tune against the held-out batch (see docs/PLAN_PIXEL_SNAP_V2.md).
+# pictures. Do not tune against the held-out batch (see docs/PLAN_PIXEL_SNAP_V1.md).
 
 # ---- grid finding -------------------------------------------------------------------
 GRID_MIN_PIXEL = 2.0           # smallest pixel size searched (in original pixels)
@@ -98,3 +98,6 @@ SHADOW_MIN_ASPECT = 1.0        # a shadow lies flat on the ground: its box is at
 SHADOW_CAST_OFFSET = 0.20      # a shadow whose centre is this many subject-widths off to the side is a cast shadow
 SHADOW_CAST_ASYMMETRY = 0.25   # ... or one that sticks out this much further on one side than the other
 SHADOW_REMOVE_K_MAX = 0.97     # removal also takes the faint fringe of a shadow (up to this fraction of the ground colour)
+
+# ---- inputs ---------------------------------------------------------------------------
+MIN_PICTURE_SIDE = 16          # smaller pictures cannot be analysed (a 3 by 3 picture used to take 11 seconds and a 1 by 1 crashed)

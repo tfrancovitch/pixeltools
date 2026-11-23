@@ -91,9 +91,9 @@ def main(argv=None) -> int:
     rows = [{"file": lab["file"], **res} for lab, res in zip(labels, results)]
     elapsed = time.time() - t0
 
-    L = [f"# Pixel Snap scorecard", "",
+    L = ["# Pixel Snap scorecard", "",
          f"Labels: `{args.labels.name}` · pictures scored: {len(rows)} · run time: {elapsed:.0f} s",
-         f"Code version: tuning.py as committed; see git log. Pictures are not stored in the repository.", ""]
+         "Code version: tuning.py as committed; see git log. Pictures are not stored in the repository.", ""]
     if missing:
         L += [f"**Labelled pictures not found in the folder ({len(missing)}):** " + ", ".join(missing[:10]) + (" ..." if len(missing) > 10 else ""), ""]
     errors = [r for r in rows if not r["ok"]]
@@ -105,8 +105,8 @@ def main(argv=None) -> int:
     L += ["## Pixel grid", "",
           f"Clear grid on **{len(by_status['found'])}**, weak grid (used, flagged) on **{len(by_status['weak'])}**, "
           f"no grid on **{len(by_status['none'])}** of {len(rows)}.",
-          f"- Weak: " + (", ".join(by_status["weak"]) or "none"),
-          f"- None: " + (", ".join(by_status["none"]) or "none"), ""]
+          "- Weak: " + (", ".join(by_status["weak"]) or "none"),
+          "- None: " + (", ".join(by_status["none"]) or "none"), ""]
 
     # ---- view -------------------------------------------------------------------
     scored = []                       # the labelled answer and the tool's answer, kept apart

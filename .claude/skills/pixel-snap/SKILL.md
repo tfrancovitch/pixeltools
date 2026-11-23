@@ -11,18 +11,20 @@ Midjourney "pixel art" is a big picture of pixel art: each visible pixel is real
 
 ```
 git clone https://github.com/tfrancovitch/pixeltools     # skip if already in the repo
-pip install numpy pillow
+pip install -r tools/pixel-snap/requirements.txt
 ```
 
-Needs Python 3.9 or newer. The tool is `tools/pixel-snap/pixel_snap.py`. It uses no network and no AI.
+Needs Python 3.9 or newer (tested on 3.13). The tool is `tools/pixel-snap/pixel_snap.py`. It uses no network and no AI.
 
 ## The commands you will use
 
 Sort a whole folder, printing only what needs attention (the cheap default):
 
 ```
-python tools/pixel-snap/pixel_snap.py IN/*.png --sort OUT --brief --want-view orthogonal
+python tools/pixel-snap/pixel_snap.py IN/*.png --sort OUT --brief --want-view orthogonal --jobs 4
 ```
+
+`--jobs 4` works on four pictures at once (use `--jobs 0` for one per core): 102 pictures took 46 seconds instead of about 4 minutes.
 
 - `--want-view orthogonal | isometric | either`: for buildings, objects and scenes. Pictures in the other view go to `OUT/mismatches/`.
 - `--want-facing diagonal | cardinal | either`: for characters. **The tool cannot judge facing**, so a wanted facing sends every character to `OUT/cant-tell/`. Use `either` unless a person will sort those by eye.
@@ -53,7 +55,7 @@ One picture or a quick look, no folders: `python tools/pixel-snap/pixel_snap.py 
 2. Use `--brief`. Read the totals and the few lines it prints; do not open the sprites.
 3. Look at a picture only when a person asks, or for `_WEAK` sprites and `cant-tell/` where a decision is needed. Look at a contact sheet of several, not one at a time.
 4. Trust the grid status: "weak" means check, "none" means the picture is not pixel art (say so; do not force it, unless the user gives a size with `--cell`).
-5. Each picture takes about 1 to 3 seconds. A batch of 100 is a few minutes: tell the user the estimate before a very large batch.
+5. Each picture takes about 1 to 3 seconds (a 4000 by 4000 picture about 8). Use `--jobs`. Pictures smaller than 16 pixels on a side are refused with a clear message. Tell the user the estimate before a very large batch.
 
 ## What it can and cannot do
 

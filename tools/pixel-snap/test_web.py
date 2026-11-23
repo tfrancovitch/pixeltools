@@ -90,6 +90,15 @@ class WebTests(unittest.TestCase):
             server.shutdown()
         self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
 
+    def test_the_browser_core_refuses_a_tiny_picture_like_python_does(self):
+        script = (
+            "const vm=require('vm'),fs=require('fs');const ctx={};vm.createContext(ctx);"
+            "vm.runInContext(fs.readFileSync(process.argv[1],'utf8'),ctx);"
+            "try{ctx.SnapCore.analyse({w:3,h:3,data:new Uint8ClampedArray(36)});console.log('NO ERROR')}catch(e){console.log(e.message)}"
+        )
+        done = subprocess.run(["node", "-e", script, str(HERE / "web" / "core.built.js")], capture_output=True, text=True)
+        self.assertIn("too small to analyse", done.stdout)
+
     def test_the_page_still_works_when_the_background_worker_is_blocked(self):
         # the Claude viewer is stricter than a plain browser; without a worker the page runs the same code on the main thread
         done = subprocess.run(["node", str(HERE / "eval" / "web_ui_smoke.js"), str(self.pics), "--no-worker"], capture_output=True, text=True, env=node_env())

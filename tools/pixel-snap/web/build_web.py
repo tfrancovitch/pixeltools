@@ -22,9 +22,15 @@ def tuning_json() -> str:
     return json.dumps(values, indent=1)
 
 
+def version() -> str:
+    m = re.search(r'__version__ = "([^"]+)"', (ROOT / "pixel_snap.py").read_text(encoding="utf-8"))
+    return m.group(1) if m else "0"
+
+
 def built_core() -> str:
     src = (HERE / "core.js").read_text(encoding="utf-8")
-    return re.sub(r"/\*TUNING_START\*/.*?/\*TUNING_END\*/", lambda m: "/*TUNING_START*/" + tuning_json() + "/*TUNING_END*/", src, count=1, flags=re.S)
+    out = re.sub(r"/\*TUNING_START\*/.*?/\*TUNING_END\*/", lambda m: "/*TUNING_START*/" + tuning_json() + "/*TUNING_END*/", src, count=1, flags=re.S)
+    return out.replace("/*VERSION*/", version())
 
 
 def artifact_fragment(page: str) -> str:
@@ -88,7 +94,7 @@ def main() -> None:
     print("wrote web/core.built.js", len(core), "bytes")
     template = HERE / "app.template.html"
     if template.exists():
-        page = template.read_text(encoding="utf-8").replace("/*CORE_JS*/", core.replace("</script", "<\\/script"))
+        page = template.read_text(encoding="utf-8").replace("/*CORE_JS*/", core.replace("</script", "<\\/script")).replace("/*VERSION*/", version())
         (ROOT / "pixel-snap.html").write_text(page, encoding="utf-8")
         (HERE / "artifact.built.html").write_text(artifact_fragment(page), encoding="utf-8")
         print("wrote pixel-snap.html", len(page), "bytes and web/artifact.built.html")

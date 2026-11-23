@@ -7,7 +7,7 @@ Two versions, same method, same answers (checked on 102 real pictures and on dra
 | File | Use it for |
 |---|---|
 | `pixel-snap.html` | A phone or computer, one picture or a whole batch. One self-contained file; works offline; nothing is uploaded. |
-| `pixel_snap.py` | Big batches and scripts. Needs Python 3.9+, numpy and Pillow (`pip install numpy pillow`). |
+| `pixel_snap.py` | Big batches and scripts. Needs Python 3.9 or newer (tested on 3.13), numpy and Pillow: `pip install -r requirements.txt`. |
 
 ## On a phone
 
@@ -48,6 +48,8 @@ python pixel_snap.py *.png --scale 8 -o out/      # many files, enlarged 8x (for
 python pixel_snap.py picture.png --cell 12.5      # you set the pixel size
 python pixel_snap.py picture.png --colors 16      # also limit the palette
 python pixel_snap.py picture.png --no-follow      # assume a perfectly straight grid
+python pixel_snap.py *.png --jobs 4 --brief       # four pictures at once (0 = one per core); short output
+python pixel_snap.py --version                    # 1.0.0
 python pixel_snap.py *.png --check-only           # only report each picture's view; save nothing
 python pixel_snap.py *.png --skip-isometric       # convert everything except isometric pictures
 python pixel_snap.py in/*.png --sort sorted --want-view orthogonal   # sort a whole batch into folders (see below)
@@ -178,13 +180,19 @@ Width and height are measured separately.
 - Midjourney does not keep to a small palette, so a result can still hold 80 to 200 slightly different colours. For a clean sprite, limit them (`--colors 16` or the "Limit colors" slider) and finish by hand in a pixel editor.
 - Testing so far: pictures made by enlarging known sprites with soft edges, noise and JPEG damage (exact answers known), plus four real Midjourney images checked by eye (no exact answers known). The first version of the detector failed all four real images; the tests now include shapes like them. Real-world failures are welcome as bug reports.
 
+## Inputs it accepts
+
+PNG, JPEG, WebP and anything else Pillow reads, in any colour mode, including 16-bit pictures and phone photos with a rotation flag. Pictures smaller than 16 pixels on a side are refused with a clear message. The browser version refuses pictures over 36 million pixels (about 6000 by 6000) and says to shrink them or use Python; Python has no limit (a 4096 by 4096 picture takes about 8 seconds).
+
 ## Tests
 
 ```
-python -m unittest -v
+cd tools/pixel-snap
+python -m unittest -v            # everything: about 8 minutes
+python -m unittest test_pixel_snap test_framing test_grid test_subject test_view test_sorting test_inputs   # the quick core
 ```
 
-Each test draws a known sprite, enlarges it by an awkward amount, damages it, and checks that the exact sprite comes back.
+Each test draws a known sprite, enlarges it by an awkward amount, damages it, and checks that the exact sprite comes back. The browser tests (`test_web`) need Node and Playwright and are skipped without them. `python eval/scorecard.py <pictures> eval/labels_mj_test_v1.csv` grades the tool against the labelled real pictures (`eval/SCORECARD.md` holds the last result; the pictures themselves are not in the repository).
 
 ## License
 

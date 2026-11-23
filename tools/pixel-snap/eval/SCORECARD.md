@@ -1,6 +1,6 @@
 # Pixel Snap scorecard
 
-Labels: `labels_mj_test_v1.csv` · pictures scored: 102 · run time: 44 s
+Labels: `labels_mj_test_v1.csv` · pictures scored: 102 · run time: 48 s
 Code version: tuning.py as committed; see git log. Pictures are not stored in the repository.
 
 ## Pixel grid

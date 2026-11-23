@@ -7,10 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-import numpy as np
-from PIL import Image, ImageDraw
 
-import facing
 import pixel_snap
 from test_framing import figure, on_background, plain
 from test_pixel_snap import make_fake, scene
