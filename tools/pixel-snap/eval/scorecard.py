@@ -43,7 +43,7 @@ def run_one(path: str) -> dict:
         res = pixel_snap.snap_image(Image.open(path))
         return {
             "ok": True,
-            "found": bool(res.found), "grid_status": res.grid_status, "shadow": "cant" if res.shadow.unsure else ("yes" if res.shadow.found else "no"), "shadow_kind": res.shadow.kind if res.shadow.found else "cant", "subject": "cant" if res.subject.kind == "unclear" else res.subject.kind, "flatness": None if res.flatness is None else round(res.flatness, 3),
+            "found": bool(res.found), "grid_status": res.grid_status, "shadow": "cant" if res.shadow.unsure else ("yes" if res.shadow.found else "no"), "shadow_kind": res.shadow.kind if res.shadow.found else "cant", "facing": res.facing.kind, "subject": "cant" if res.subject.kind == "unclear" else res.subject.kind, "flatness": None if res.flatness is None else round(res.flatness, 3),
             "px": round(res.px, 2), "py": round(res.py, 2),
             "sprite_w": res.size[0], "sprite_h": res.size[1],
             "view": VIEW_NAMES[res.view.kind],
@@ -54,7 +54,7 @@ def run_one(path: str) -> dict:
             "seconds": round(time.time() - t0, 1),
         }
     except Exception as exc:  # report it, keep going
-        return {"ok": False, "error": str(exc)[:80], "found": False, "view": "cant", "framing": "cant", "subject": "cant", "shadow": "cant", "shadow_kind": "cant", "seconds": round(time.time() - t0, 1)}
+        return {"ok": False, "error": str(exc)[:80], "found": False, "view": "cant", "framing": "cant", "subject": "cant", "shadow": "cant", "shadow_kind": "cant", "facing": "n/a", "seconds": round(time.time() - t0, 1)}
 
 
 def find_images(folder: Path) -> dict[str, Path]:
@@ -177,7 +177,18 @@ def main(argv=None) -> int:
         L += table(c, ["contact", "cast"], ["contact", "cast", "cant"]) + [""]
         bad = [f for f in ck if f[1] != f[2]]
         L += ["Not matching: " + (", ".join(f"{f[0][-8:-4]} (labelled {f[1]}, said {f[2]})" for f in bad) or "none"), ""]
-    for col, plan in (("facing", "slice C2"),):
+    # ---- facing (the C2 experiment) ------------------------------------------------
+    fc = [(lab["file"], lab["facing"], lab.get("facing_clear", ""), res.get("facing", "n/a")) for lab, res in zip(labels, results) if lab.get("facing")]
+    if fc:
+        said = Counter(f[3] for f in fc)
+        L += ["## Facing check (slice C2): ended as can't tell", "",
+              f"{len(fc)} characters carry a facing label (clear diagonal: {sum(1 for f in fc if f[1] == 'diagonal' and f[2] == 'y')}, "
+              f"clear cardinal: {sum(1 for f in fc if f[1] == 'cardinal' and f[2] == 'y')}). The tool answered: "
+              + ", ".join(f"{k} {v}" for k, v in said.items()) + ".", "",
+              "The plan's stop rule applied: no geometry-only rule found at least 5 of the 6 clear diagonal characters while calling at most 3 of the 43 "
+              "clear cardinal ones diagonal (best of 1,042 candidate rules: 4 found with 3 false calls). The clues are measured and written to the report; "
+              "`python eval/facing_probe.py <images> <labels>` reproduces the search.", ""]
+    for col, plan in ():
         n = sum(1 for lab in labels if lab.get(col))
         L += [f"## {col.capitalize()} check", "", f"Not built yet ({plan}). {n} labelled pictures are waiting for it.", ""]
 

@@ -95,7 +95,7 @@ class SubjectTests(unittest.TestCase):
             with contextlib.redirect_stdout(buf):
                 self.assertEqual(pixel_snap.main([str(src), "--check-only"]), 0)
             self.assertTrue(buf.getvalue().startswith("[CHARACTER]"), buf.getvalue())
-            self.assertIn("facing: not checked yet", buf.getvalue())
+            self.assertIn("facing: can't tell", buf.getvalue())
 
 
 if __name__ == "__main__":

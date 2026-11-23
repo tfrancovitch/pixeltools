@@ -1,6 +1,6 @@
 # Pixel Snap scorecard
 
-Labels: `labels_mj_test_v1.csv` · pictures scored: 102 · run time: 39 s
+Labels: `labels_mj_test_v1.csv` · pictures scored: 102 · run time: 44 s
 Code version: tuning.py as committed; see git log. Pictures are not stored in the repository.
 
 ## Pixel grid
@@ -83,7 +83,9 @@ Of 10 labelled shadows, **7 named correctly** (a shadow the tool did not find co
 
 Not matching: 0034 (labelled cast, said cant), 0061 (labelled contact, said cant), 0091 (labelled cast, said cant)
 
-## Facing check
+## Facing check (slice C2): ended as can't tell
 
-Not built yet (slice C2). 87 labelled pictures are waiting for it.
+87 characters carry a facing label (clear diagonal: 6, clear cardinal: 43). The tool answered: unclear 84, n/a 3.
+
+The plan's stop rule applied: no geometry-only rule found at least 5 of the 6 clear diagonal characters while calling at most 3 of the 43 clear cardinal ones diagonal (best of 1,042 candidate rules: 4 found with 3 false calls). The clues are measured and written to the report; `python eval/facing_probe.py <images> <labels>` reproduces the search.
 

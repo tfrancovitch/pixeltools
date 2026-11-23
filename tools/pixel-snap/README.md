@@ -25,9 +25,17 @@ python pixel_snap.py *.png --shadows remove-cast  # drop cast (sun-angle) shadow
 python pixel_snap.py *.png --shadows remove-all   # drop every ground shadow
 ```
 
-Every line of output starts with what the picture is: `[CHARACTER]`, `[BUILDING]`, `[SCENE]` or `[UNCLEAR]`. For anything that is not a character, the line also gives the view (isometric, orthogonal or unclear). Characters are judged on which way they face, not on isometric or orthogonal; that check is not built yet, so the line says so.
+Every line of output starts with what the picture is: `[CHARACTER]`, `[BUILDING]`, `[SCENE]` or `[UNCLEAR]`. For anything that is not a character, the line also gives the view (isometric, orthogonal or unclear). Characters are judged on which way they face, not on isometric or orthogonal; the tool cannot judge facing yet, so the line says "can't tell".
 
 From Python code: `pixel_snap.snap_image(PIL_image)` returns a `Result` whose `.rgba` is the sprite.
+
+## Which way is a character facing? (not solved)
+
+A character is judged on facing (straight on, or turned to a diagonal), not on isometric or orthogonal. This was the one slice that was an experiment, and it **did not work without AI**. The tool measures the geometric clues (how mirror-symmetric the silhouette is, how far apart and how level the feet are, how far the head sits off the torso and the torso off the legs), prints them in `report.csv`, and answers "can't tell".
+
+What was tried: an exhaustive search over single clues and pairs of clues (1,042 candidate rules) against the 6 clearly diagonal and 43 clearly cardinal characters of the first test batch. The target was at least 5 of 6 found with at most 3 false calls. None reached it (best: 4 found with 3 false calls), and with so many rules and so few examples even that is probably luck. Two features did separate the six pictures: having a ground shadow, and squat chibi proportions. Both describe the *style* of those six pictures (chibi figures on coloured ground), not the facing, so they were rejected as overfitting; a test makes sure a chibi with a shadow still gets "can't tell".
+
+What could change this: many more labelled characters (the labelling game would supply them), or a face and pose reader, which is a model and so outside the "no AI" rule. `python eval/facing_probe.py <images> <labels.csv>` reproduces the search.
 
 ## Sorting a batch
 
@@ -43,7 +51,7 @@ From Python code: `pixel_snap.snap_image(PIL_image)` returns a `Result` whose `.
 Two independent settings say what you want:
 
 - `--want-view orthogonal | isometric | either` applies to buildings, objects and scenes (everything that is not a character).
-- `--want-facing diagonal | cardinal | either` applies to characters. The facing check is not built yet, so a character is "can't tell" whenever a facing is wanted; with `either` it goes to `matches/`.
+- `--want-facing diagonal | cardinal | either` applies to characters. The tool cannot judge facing yet (see below), so a character is "can't tell" whenever a facing is wanted; with `either` it goes to `matches/`.
 
 A game can want diagonal-facing characters in an orthographic world, so the two do not affect each other. The other options (`--scale`, `--transparent`, `--shadows`, `--colors`) apply to the saved sprites. `--check-only --sort FOLDER` writes only the report. If a picture is both the wrong view and not pixel art, it goes in `not-pixel-art/` (the report still says its view). Pictures with the same file name from different folders are both kept (`-2`, `-3`, ...).
 
@@ -108,7 +116,7 @@ Tested on 102 real pictures: right on 100. The two it gets wrong are a character
 
 ## Isometric or straight-on? (buildings, objects and scenes)
 
-Midjourney often draws isometric art (diamond floors, blocks seen from a corner) when you want straight-on or top-down art. For buildings, objects and scenes the tool reports the view; characters are judged on which way they face instead (not built yet).
+Midjourney often draws isometric art (diamond floors, blocks seen from a corner) when you want straight-on or top-down art. For buildings, objects and scenes the tool reports the view; characters are judged on which way they face instead, which the tool cannot do yet (see "Which way is a character facing?" below).
 
 How it decides, with no AI and **no pixel grid needed**:
 

@@ -35,6 +35,7 @@ import numpy as np
 from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # so tuning.py is found even in python -I
+import facing as FC  # noqa: E402
 import framing as F  # noqa: E402
 import shadow as SH  # noqa: E402
 import sorting as SORT  # noqa: E402
@@ -451,6 +452,7 @@ class Result:
     grid_note: str = ""
     subject: "SUBJ.SubjectVerdict | None" = None   # character / building / scene / unclear
     shadow: "SH.ShadowInfo | None" = None   # ground shadow under a lone sprite, if any
+    facing: "FC.FacingVerdict | None" = None   # which way a character faces (always "unclear" so far; carries the measured clues)
     flatness: float | None = None   # how flat the blocks are inside (see cell_flatness); None when nothing was snapped
     shadow_removed: int = 0         # sprite pixels turned back into ground by shadow removal
 
@@ -542,10 +544,11 @@ def rebuild(rgba: np.ndarray, an: Analysis, cell: float | None = None,
         shadow_removed = SH.remove_shadow(out, bx, by, shadow, framing)
     crisp = found and flat is not None and flat >= T.VIEW_CELL_MIN_FLATNESS
     view = V.classify_view(rgba, (dx.p + dy.p) / 2 if crisp else None)   # no grid needed; crisp pixel art gets a pixel-sized blur
+    subject = SUBJ.classify_subject(framing)
     removed = False
     if transparent and found and framing.kind == "isolated":
         removed = F.remove_background(out) > 0
-    return Result(out, bx, by, dx.p, dy.p, found, raw, count_colours(out), view, framing, removed, status, note, SUBJ.classify_subject(framing), shadow, flat, shadow_removed)
+    return Result(out, bx, by, dx.p, dy.p, found, raw, count_colours(out), view, framing, removed, status, note, subject, shadow, FC.classify_facing(framing, subject, shadow), flat, shadow_removed)
 
 
 def snap_image(img: Image.Image, cell: float | None = None, follow: bool = True,
@@ -650,7 +653,7 @@ def main(argv=None) -> int:
         tag = res.subject.kind.upper()
         is_character = res.subject.kind == "character"
         # characters are judged on which way they face, not on isometric vs orthographic (not built yet)
-        view_text = "facing: not checked yet" if is_character else res.view.describe()
+        view_text = res.facing.describe() if is_character else res.view.describe()
         shadow_text = f"; {res.shadow.describe()}" if (res.shadow.found or res.shadow.unsure) else ""
         if res.shadow.found and args.shadows != "keep":
             shadow_text += ("; shadow removed" if res.shadow_removed else

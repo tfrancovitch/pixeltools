@@ -47,7 +47,8 @@ class DecisionTable(unittest.TestCase):
     def test_characters_need_the_facing_check_when_a_facing_is_wanted(self):
         # the facing check is not built yet: a wanted facing can only be "can't tell"
         self.assertEqual(sorting.decide(stub(subject="character"), "either", "diagonal").bucket, "cant-tell")
-        # once it exists (a facing attribute), the same table applies
+        self.assertEqual(sorting.decide(stub(subject="character", facing="unclear"), "either", "cardinal").bucket, "cant-tell")
+        # once a facing rule exists, the same table applies
         for seen, want, bucket in (("diagonal", "diagonal", "matches"), ("cardinal", "diagonal", "mismatches"),
                                    ("cardinal", "cardinal", "matches"), ("mixed", "diagonal", "cant-tell"),
                                    ("unclear", "cardinal", "cant-tell")):
@@ -119,10 +120,10 @@ class SortRunTests(unittest.TestCase):
         self.assertEqual(rows["village_front.png"]["folder"], "mismatches")
         self.assertEqual(rows["hero.png"]["folder"], "matches")          # the view setting does not apply to characters
 
-    def test_wanting_a_facing_puts_characters_in_cant_tell_until_the_check_exists(self):
+    def test_wanting_a_facing_puts_characters_in_cant_tell_while_the_tool_cannot_judge_it(self):
         rows = rows_by_file(self.run_sort("facing", "--want-facing", "diagonal"))
         self.assertEqual(rows["hero.png"]["folder"], "cant-tell")
-        self.assertIn("facing check is not built yet", rows["hero.png"]["reason"])
+        self.assertIn("cannot judge facing yet", rows["hero.png"]["reason"])
         self.assertEqual(rows["house_iso.png"]["folder"], "matches")      # no view was asked for
 
     def test_the_report_has_every_measurement(self):

@@ -11,8 +11,9 @@
 
 Settings:
   want_view    "orthogonal", "isometric" or "either"   (buildings, objects and scenes; anything that is not a character)
-  want_facing  "diagonal", "cardinal" or "either"       (characters; the facing check is not built yet, so a
-                                                         character is "can't tell" whenever a facing is wanted)
+  want_facing  "diagonal", "cardinal" or "either"       (characters; the facing check could not be made to work
+                                                         without AI (see facing.py), so a character is "can't tell"
+                                                         whenever a facing is wanted)
 
 The two settings are independent: a game can want diagonal-facing characters in an orthographic world.
 """
@@ -41,8 +42,9 @@ def decide(res, want_view: str = "either", want_facing: str = "either") -> Decis
         if want_facing == "either":
             return Decision("matches", "a character; no facing was asked for", weak)
         facing = getattr(res, "facing", None)
-        if facing is None or facing.kind in ("unclear", "mixed"):
-            why = "the facing check is not built yet" if facing is None else f"the facing is {facing.kind}"
+        if facing is None or facing.kind in ("unclear", "mixed", "n/a"):
+            why = ("the facing check is not built yet" if facing is None else
+                   "the tool cannot judge facing yet (see facing.py)" if facing.kind in ("unclear", "n/a") else "the facing is mixed")
             return Decision("cant-tell", f"a character, and you asked for {want_facing} facing, but {why}")
         if facing.kind == want_facing:
             return Decision("matches", f"a character facing {facing.kind}, as asked", weak)
@@ -58,7 +60,7 @@ def decide(res, want_view: str = "either", want_facing: str = "either") -> Decis
 
 
 REPORT_COLUMNS = [
-    "file", "folder", "reason", "subject", "view", "facing", "grid", "pixel_w", "pixel_h", "sprite_w", "sprite_h",
+    "file", "folder", "reason", "subject", "view", "facing", "facing_clues", "grid", "pixel_w", "pixel_h", "sprite_w", "sprite_h",
     "flatness", "framing", "shadow", "shadow_kind", "shadow_removed_pixels", "colours",
     "view_diagonal", "view_horizontal", "view_vertical", "saved_as",
 ]
@@ -70,6 +72,7 @@ def report_row(path, res, decision: Decision, saved_as: str) -> dict:
         "file": str(path), "folder": decision.bucket, "reason": decision.reason,
         "subject": res.subject.kind, "view": "n/a (character)" if res.subject.kind == "character" else res.view.kind,
         "facing": facing.kind if facing is not None else "not checked",
+        "facing_clues": "" if facing is None or not facing.clues else "; ".join(f"{k} {v}" for k, v in facing.clues.items()),
         "grid": res.grid_status, "pixel_w": round(res.px, 2), "pixel_h": round(res.py, 2),
         "sprite_w": res.size[0], "sprite_h": res.size[1],
         "flatness": "" if res.flatness is None else round(res.flatness, 3),
