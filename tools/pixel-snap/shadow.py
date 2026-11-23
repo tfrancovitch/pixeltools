@@ -41,20 +41,31 @@ class ShadowInfo:
     dy: float = 0.0                   # ... in subject heights (down = positive)
     mask: np.ndarray | None = field(default=None, repr=False)   # coarse shadow mask
     scale: int = 1                    # original pixels per mask cell
+    reach_left: float = 0.0           # how far the shadow sticks out past the subject on the left, in subject widths
+    reach_right: float = 0.0          # ... on the right
+    kind: str = ""                    # "contact" (a small patch under the base) or "cast" (reaches clearly to one side)
 
     def describe(self) -> str:
         if self.unsure:
             return f"shadow: can't tell ({self.reason})"
         if not self.found:
             return f"no ground shadow ({self.reason})"
-        side = "to the left" if self.dx < -0.15 else "to the right" if self.dx > 0.15 else "under the base"
-        return f"ground shadow {side} ({self.share:.0%} of the subject, {self.darkness:.0%} of the ground brightness)"
+        side = "falling to the left" if self.dx < -0.15 else "falling to the right" if self.dx > 0.15 else "under the base"
+        return f"{self.kind} shadow {side} ({self.share:.0%} of the subject, {self.darkness:.0%} of the ground brightness)"
 
 
 def _blocks(a: np.ndarray, s: int) -> np.ndarray:
     h, w = a.shape[0] // s * s, a.shape[1] // s * s
     a = a[:h, :w]
     return a.reshape(h // s, s, w // s, s, *a.shape[2:]).mean(axis=(1, 3))
+
+
+def _kind(dx: float, reach_left: float, reach_right: float) -> str:
+    """A cast shadow falls to one side: its centre is off to the side, or it sticks out much further on one
+    side than the other. A contact shadow sits under the base, about as far out on both sides."""
+    if abs(dx) >= T.SHADOW_CAST_OFFSET or abs(reach_left - reach_right) >= T.SHADOW_CAST_ASYMMETRY:
+        return "cast"
+    return "contact"
 
 
 def find_shadow(rgba: np.ndarray, framing: F.Framing) -> ShadowInfo:
@@ -153,9 +164,55 @@ def find_shadow(rgba: np.ndarray, framing: F.Framing) -> ShadowInfo:
     if accepted.sum() > T.SHADOW_MAX_SHARE * core.sum():
         return ShadowInfo(False, "the darker patch is as big as the subject itself: probably its own dark colours")
     sy, sx = np.nonzero(accepted)
+    reach_left = max(0.0, (cx0 - sx.min()) / core_w)
+    reach_right = max(0.0, (sx.max() + 1 - (cx1 + 1)) / core_w)
     if (sx.max() - sx.min() + 1) < T.SHADOW_MIN_ASPECT * (sy.max() - sy.min() + 1):
         return ShadowInfo(False, "the darker patch is taller than wide, like a limb or trunk, not a shadow lying on the ground")
     return ShadowInfo(True, "a flat patch of darker ground at the base",
                       share=float(accepted.sum() / core.sum()), darkness=float(k[accepted].mean()),
                       dx=float((sx.mean() - base_x) / core_w), dy=float((sy.mean() - base_y) / core_h),
-                      mask=accepted, scale=s)
+                      mask=accepted, scale=s, reach_left=float(reach_left), reach_right=float(reach_right),
+                      kind=_kind((sx.mean() - base_x) / core_w, reach_left, reach_right))
+
+
+def remove_shadow(sprite: np.ndarray, bx: list[int], by: list[int], info: ShadowInfo, framing: F.Framing) -> int:
+    """Turn the ground shadow in a snapped sprite back into plain ground, in place. Returns how many
+    sprite pixels were changed.
+
+    A sprite pixel is changed only if BOTH hold: it lies inside the shadow found in the original
+    picture (grown by one coarse cell, to take the soft fringe), and its colour is the ground colour
+    made darker. Everything else, the sprite itself above all, is left exactly as it was."""
+    if not info.found or info.mask is None:
+        return 0
+    s = info.scale
+    full_w, full_h = bx[-1], by[-1]
+    ox = (np.array(bx[:-1]) + np.array(bx[1:])) / 2          # centre of every sprite pixel in the original picture
+    oy = (np.array(by[:-1]) + np.array(by[1:])) / 2
+    h, w = len(oy), len(ox)
+    feat = np.stack([np.ones((h, w)), np.broadcast_to(ox / full_w, (h, w)), np.broadcast_to((oy / full_h)[:, None], (h, w))], axis=-1)
+    ground = feat @ framing.background.coef.T
+    grown = info.mask.copy()
+    grown[1:] |= info.mask[:-1]; grown[:-1] |= info.mask[1:]
+    grown[:, 1:] |= info.mask[:, :-1]; grown[:, :-1] |= info.mask[:, 1:]
+    cy = np.clip((oy / s).astype(int), 0, grown.shape[0] - 1)
+    cx = np.clip((ox / s).astype(int), 0, grown.shape[1] - 1)
+    inside = grown[cy[:, None], cx[None, :]]
+    ratio = sprite[..., :3].astype(np.float64) / np.maximum(ground, 1.0)
+    k = ratio.mean(axis=2)
+    chroma = np.abs(ratio - k[..., None]).max(axis=2)
+    darker_ground = (k >= T.SHADOW_K_MIN) & (k <= T.SHADOW_REMOVE_K_MAX) & (chroma <= T.SHADOW_CHROMA_DEV) & (sprite[..., 3] >= 128)
+    remove = inside & darker_ground
+    if not remove.any():
+        return 0
+    # Put back the sprite's own ground colour: the colour already used by the open-ground pixels that is closest
+    # to the fitted ground at that spot. That way no new off-by-a-few colour appears.
+    open_px = ~grown[cy[:, None], cx[None, :]] & (k >= 0.97) & (k <= 1.05) & (chroma <= 0.05)
+    palette = np.unique(sprite[open_px][:, :3], axis=0) if open_px.any() else np.zeros((0, 3), np.uint8)
+    wanted = np.clip(np.rint(ground[remove]), 0, 255)
+    if len(palette):
+        d = np.abs(wanted[:, None, :] - palette[None, :, :].astype(float)).sum(axis=2)
+        best = d.argmin(axis=1)
+        pick = np.where(d[np.arange(len(wanted)), best] <= 2 * T.COLOUR_MERGE_TOLERANCE, best, -1)
+        wanted = np.where((pick >= 0)[:, None], palette[np.maximum(pick, 0)].astype(float), wanted)
+    sprite[remove, :3] = wanted.astype(np.uint8)
+    return int(remove.sum())

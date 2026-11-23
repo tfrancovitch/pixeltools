@@ -19,6 +19,7 @@ Needs Python 3.9+, numpy and Pillow.
     python pixel_snap.py *.png --skip-isometric      # leave out isometric pictures
     python pixel_snap.py *.png --check-only          # just report which are isometric
     python pixel_snap.py sprite.png --transparent    # also make a plain background transparent
+    python pixel_snap.py *.png --shadows remove-cast # drop cast (sun-angle) shadows, keep small contact shadows
 
 The method matches the browser version (pixel-snap.html) in this folder.
 """
@@ -449,6 +450,7 @@ class Result:
     subject: "SUBJ.SubjectVerdict | None" = None   # character / building / scene / unclear
     shadow: "SH.ShadowInfo | None" = None   # ground shadow under a lone sprite, if any
     flatness: float | None = None   # how flat the blocks are inside (see cell_flatness); None when nothing was snapped
+    shadow_removed: int = 0         # sprite pixels turned back into ground by shadow removal
 
     @property
     def size(self) -> tuple[int, int]:
@@ -497,7 +499,8 @@ def analyse(rgba: np.ndarray) -> Analysis:
 
 
 def rebuild(rgba: np.ndarray, an: Analysis, cell: float | None = None,
-            follow: bool = True, colours: int = 0, transparent: bool = False) -> Result:
+            follow: bool = True, colours: int = 0, transparent: bool = False,
+            shadows: str = "keep") -> Result:
     h, w = rgba.shape[:2]
     dx, dy, found = an.dx, an.dy, an.found
     if cell:
@@ -524,25 +527,31 @@ def rebuild(rgba: np.ndarray, an: Analysis, cell: float | None = None,
         out = rgba.copy()
     else:
         out = sample_cells(rgba, bx, by)
+    framing = F.classify_framing(rgba)
+    shadow = SH.find_shadow(rgba, framing)
     raw = count_colours(out)
     if found:  # merging shades is for sprites; a picture with no grid is returned untouched
         merge_similar(out, T.COLOUR_MERGE_TOLERANCE)
         if colours > 0:
             quantize(out, colours)
+    shadow_removed = 0
+    if found and shadows != "keep" and shadow.found and (shadows == "remove-all" or shadow.kind == "cast"):
+        # last, once the palette is final, so that only shadow pixels change and nothing else does
+        shadow_removed = SH.remove_shadow(out, bx, by, shadow, framing)
     crisp = found and flat is not None and flat >= T.VIEW_CELL_MIN_FLATNESS
     view = V.classify_view(rgba, (dx.p + dy.p) / 2 if crisp else None)   # no grid needed; crisp pixel art gets a pixel-sized blur
-    framing = F.classify_framing(rgba)
     removed = False
     if transparent and found and framing.kind == "isolated":
         removed = F.remove_background(out) > 0
-    return Result(out, bx, by, dx.p, dy.p, found, raw, count_colours(out), view, framing, removed, status, note, SUBJ.classify_subject(framing), SH.find_shadow(rgba, framing), flat)
+    return Result(out, bx, by, dx.p, dy.p, found, raw, count_colours(out), view, framing, removed, status, note, SUBJ.classify_subject(framing), shadow, flat, shadow_removed)
 
 
 def snap_image(img: Image.Image, cell: float | None = None, follow: bool = True,
-               colours: int = 0, transparent: bool = False) -> Result:
-    """Convenience: Pillow image in, Result out."""
+               colours: int = 0, transparent: bool = False, shadows: str = "keep") -> Result:
+    """Convenience: Pillow image in, Result out. shadows: "keep", "remove-cast" (keep a contact shadow)
+    or "remove-all"."""
     rgba = np.array(img.convert("RGBA"))
-    return rebuild(rgba, analyse(rgba), cell, follow, colours, transparent)
+    return rebuild(rgba, analyse(rgba), cell, follow, colours, transparent, shadows)
 
 
 # --------------------------------------------------------------------------
@@ -556,6 +565,8 @@ def main(argv=None) -> int:
     ap.add_argument("--cell", type=float, help="pixel size in the original, if you want to override auto-detection")
     ap.add_argument("--colors", "--colours", dest="colours", type=int, default=0, help="limit the palette to this many colours")
     ap.add_argument("--no-follow", action="store_true", help="assume a perfectly straight grid instead of following wobbles")
+    ap.add_argument("--shadows", choices=["keep", "remove-cast", "remove-all"], default="keep",
+                    help="ground shadows: keep them all (default), remove cast shadows but keep a small contact shadow, or remove all")
     ap.add_argument("--transparent", action="store_true", help="make the background transparent (lone sprites on a plain background only)")
     ap.add_argument("--skip-isometric", action="store_true", help="do not save pictures that look isometric (for when you need straight-on art)")
     ap.add_argument("--check-only", action="store_true", help="only report the view (isometric / orthogonal / unclear); save nothing")
@@ -568,7 +579,7 @@ def main(argv=None) -> int:
     status = 0
     for path in args.inputs:
         try:
-            res = snap_image(Image.open(path), args.cell, not args.no_follow, args.colours, args.transparent)
+            res = snap_image(Image.open(path), args.cell, not args.no_follow, args.colours, args.transparent, args.shadows)
         except Exception as exc:  # unreadable file: report and go on
             print(f"{path}: could not read ({exc})", file=sys.stderr)
             status = 1
@@ -579,6 +590,10 @@ def main(argv=None) -> int:
         # characters are judged on which way they face, not on isometric vs orthographic (not built yet)
         view_text = "facing: not checked yet" if is_character else res.view.describe()
         shadow_text = f"; {res.shadow.describe()}" if (res.shadow.found or res.shadow.unsure) else ""
+        if res.shadow.found and args.shadows != "keep":
+            shadow_text += ("; shadow removed" if res.shadow_removed else
+                            "; shadow kept (a contact shadow stays)" if args.shadows == "remove-cast" and res.shadow.kind == "contact"
+                            else "; shadow NOT removed (no pixel grid to work on)")
         if args.check_only or (args.skip_isometric and res.view.kind == "isometric" and not is_character):
             why = "check only" if args.check_only else "skipped, because it is isometric"
             print(f"[{tag}] {path}: {res.subject.describe()}; {view_text}{shadow_text}; {w}x{h} pixels; not saved ({why})")

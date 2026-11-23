@@ -93,3 +93,8 @@ SHADOW_GROUND_CONTACT = 0.25   # at least this share of a patch's outer edge tou
 SHADOW_WHITE_GROUND = 235      # on a ground this bright (and neutral), a pale grey shadow cannot be told from pale grey parts of the sprite: answer "can't tell"
 SHADOW_MAX_SHARE = 0.5         # a "shadow" bigger than this share of the subject is more likely the sprite's own dark colours (real: 0.03-0.44)
 SHADOW_MIN_ASPECT = 1.0        # a shadow lies flat on the ground: its box is at least this many times wider than tall (legs and trunks are taller than wide)
+
+# ---- contact or cast, and removal (slice D2) -----------------------------------------
+SHADOW_CAST_OFFSET = 0.20      # a shadow whose centre is this many subject-widths off to the side is a cast shadow
+SHADOW_CAST_ASYMMETRY = 0.25   # ... or one that sticks out this much further on one side than the other
+SHADOW_REMOVE_K_MAX = 0.97     # removal also takes the faint fringe of a shadow (up to this fraction of the ground colour)

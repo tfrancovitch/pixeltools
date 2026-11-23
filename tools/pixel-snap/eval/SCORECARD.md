@@ -72,6 +72,17 @@ Of 90 lone sprites with a shadow label: **23 of 26 right** where the tool made a
 
 Wrong: 0034 (labelled yes, said no), 0061 (labelled yes, said no), 0091 (labelled yes, said no)
 
+## Contact or cast shadow (slice D2)
+
+Of 10 labelled shadows, **7 named correctly** (a shadow the tool did not find counts as can't tell). The labels are drafts made by eye and are the weakest part of this check.
+
+| labelled \ tool said | contact | cast | cant | right | wrong | can't tell |
+|---|---|---|---|---|---|---|
+| contact (n=4) | 3 | 0 | 1 | 3 | 0 | 1 |
+| cast (n=6) | 0 | 4 | 2 | 4 | 0 | 2 |
+
+Not matching: 0034 (labelled cast, said cant), 0061 (labelled contact, said cant), 0091 (labelled cast, said cant)
+
 ## Facing check
 
 Not built yet (slice C2). 87 labelled pictures are waiting for it.

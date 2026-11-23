@@ -90,7 +90,7 @@ MT Test 0088.png,building,isolated,iso,y,,,none,"base slab, no cast shadow"
 MT Test 0089.png,building,isolated,iso,y,,,cast,cast to the lower left
 MT Test 0090.png,building,subject_on_background,iso,y,,,,painted scene: not scored
 MT Test 0091.png,building,isolated,iso,y,,,cast,cast to the left (trees too)
-MT Test 0092.png,character,isolated,,,diagonal,y,contact,
+MT Test 0092.png,character,isolated,,,diagonal,y,cast,long shadow falling to the lower left (draft said contact)
 MT Test 0093.png,character,isolated,,,diagonal,y,contact,
 MT Test 0094.png,scene,scene,ort,y,,,,
 MT Test 0095.png,scene,scene,iso,y,,,,

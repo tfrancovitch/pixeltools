@@ -43,7 +43,7 @@ def run_one(path: str) -> dict:
         res = pixel_snap.snap_image(Image.open(path))
         return {
             "ok": True,
-            "found": bool(res.found), "grid_status": res.grid_status, "shadow": "cant" if res.shadow.unsure else ("yes" if res.shadow.found else "no"), "subject": "cant" if res.subject.kind == "unclear" else res.subject.kind, "flatness": None if res.flatness is None else round(res.flatness, 3),
+            "found": bool(res.found), "grid_status": res.grid_status, "shadow": "cant" if res.shadow.unsure else ("yes" if res.shadow.found else "no"), "shadow_kind": res.shadow.kind if res.shadow.found else "cant", "subject": "cant" if res.subject.kind == "unclear" else res.subject.kind, "flatness": None if res.flatness is None else round(res.flatness, 3),
             "px": round(res.px, 2), "py": round(res.py, 2),
             "sprite_w": res.size[0], "sprite_h": res.size[1],
             "view": VIEW_NAMES[res.view.kind],
@@ -54,7 +54,7 @@ def run_one(path: str) -> dict:
             "seconds": round(time.time() - t0, 1),
         }
     except Exception as exc:  # report it, keep going
-        return {"ok": False, "error": str(exc)[:80], "found": False, "view": "cant", "framing": "cant", "subject": "cant", "shadow": "cant", "seconds": round(time.time() - t0, 1)}
+        return {"ok": False, "error": str(exc)[:80], "found": False, "view": "cant", "framing": "cant", "subject": "cant", "shadow": "cant", "shadow_kind": "cant", "seconds": round(time.time() - t0, 1)}
 
 
 def find_images(folder: Path) -> dict[str, Path]:
@@ -165,6 +165,18 @@ def main(argv=None) -> int:
         L += table(c, ["yes", "no"], ["yes", "no", "cant"]) + [""]
         bad = [f for f in decided if f[1] != f[2]]
         L += ["Wrong: " + (", ".join(f"{f[0][-8:-4]} (labelled {f[1]}, said {f[2]})" for f in bad) or "none"), ""]
+    # ---- contact or cast -----------------------------------------------------------
+    ck = [(lab["file"], lab["shadow"], res.get("shadow_kind", "cant")) for lab, res in zip(labels, results)
+          if lab.get("shadow") in ("contact", "cast")]
+    if ck:
+        c = Counter((t, said) for _, t, said in ck)
+        right = sum(1 for _, t, said in ck if t == said)
+        L += ["## Contact or cast shadow (slice D2)", "",
+              f"Of {len(ck)} labelled shadows, **{right} named correctly** (a shadow the tool did not find counts as can't tell). "
+              "The labels are drafts made by eye and are the weakest part of this check.", ""]
+        L += table(c, ["contact", "cast"], ["contact", "cast", "cant"]) + [""]
+        bad = [f for f in ck if f[1] != f[2]]
+        L += ["Not matching: " + (", ".join(f"{f[0][-8:-4]} (labelled {f[1]}, said {f[2]})" for f in bad) or "none"), ""]
     for col, plan in (("facing", "slice C2"),):
         n = sum(1 for lab in labels if lab.get(col))
         L += [f"## {col.capitalize()} check", "", f"Not built yet ({plan}). {n} labelled pictures are waiting for it.", ""]

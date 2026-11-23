@@ -20,6 +20,8 @@ python pixel_snap.py picture.png --no-follow      # assume a perfectly straight 
 python pixel_snap.py *.png --check-only           # only report each picture's view; save nothing
 python pixel_snap.py *.png --skip-isometric       # convert everything except isometric pictures
 python pixel_snap.py sprite.png --transparent     # also make the plain background transparent
+python pixel_snap.py *.png --shadows remove-cast  # drop cast (sun-angle) shadows, keep small contact shadows
+python pixel_snap.py *.png --shadows remove-all   # drop every ground shadow
 ```
 
 Every line of output starts with what the picture is: `[CHARACTER]`, `[BUILDING]`, `[SCENE]` or `[UNCLEAR]`. For anything that is not a character, the line also gives the view (isometric, orthogonal or unclear). Characters are judged on which way they face, not on isometric or orthogonal; that check is not built yet, so the line says so.
@@ -37,18 +39,32 @@ The first question the tool answers, from the shape of the subject:
 
 On the 102 test pictures: right on 98. No building was called a character. The misses are two chibi characters (nearly square, so "unclear") and two subjects standing on a full painted background (called "scene"). The building rule was set from only three isometric buildings, so it is provisional until more examples arrive.
 
-## Is there a ground shadow? (finding only so far)
+## Ground shadows: find, name, keep or remove
 
-For a lone sprite on a plain or gradient ground, the tool looks for a **ground shadow**: a flat patch of the ground colour made darker by a steady amount (between about 45% and 92% of the ground brightness), lying on the open ground at the subject's base and touching the subject, wider than tall. The report says where it falls ("to the left", "under the base") and how dark it is. Removing shadows comes in the next step; this step only finds them.
+For a lone sprite on a plain or gradient ground, the tool looks for a **ground shadow**: a flat patch of the ground colour made darker by a steady amount (between about 45% and 92% of the ground brightness), lying on the open ground at the subject's base and touching the subject, wider than tall. It then names the kind:
+
+- **Contact shadow**: a small patch under the base, about as far out on both sides. It anchors the sprite to the ground and can stay in every sprite.
+- **Cast shadow**: reaches clearly to one side. It implies a sun angle, and sprites in one game cannot disagree about where the sun is.
+
+The report says which, where it falls and how dark it is. The option `--shadows` decides what happens:
+
+| Option | Result |
+|---|---|
+| `keep` (default) | Nothing changes. |
+| `remove-cast` | Cast shadows become plain ground; a contact shadow stays. |
+| `remove-all` | Every ground shadow becomes plain ground. |
+
+Removal works on the finished sprite, after the colours are final, and changes only pixels that are both inside the shadow and "the ground colour made darker". Everything else, the sprite above all, is left exactly as it was (tested on drawn sprites). With `--transparent`, the removed shadow becomes transparent along with the rest of the ground. Sprite shading is never touched.
 
 What it deliberately does not do:
 
-- **White or near-white grounds.** A pale grey shadow looks the same as pale grey shoes or clothing, so the tool answers "can't tell" rather than guess.
-- **Very dark shadows** (darker than 45% of the ground, for example a black shadow on a dark floor): treated as part of the subject.
-- **Whole scenes** and **sprites on a full painted background**: their shadows are part of the picture.
-- Sprite shading is never touched: only patches that lie on the open ground count.
+- **White or near-white grounds.** A pale grey shadow looks the same as pale grey shoes or clothing, so the tool answers "can't tell" and removes nothing.
+- **Very dark shadows** (darker than 45% of the ground, for example a black shadow on a dark floor): treated as part of the subject, so not found and not removed.
+- **Whole scenes** and **sprites on a full painted background**: their shadows are part of the picture and are left alone.
+- A shadow that is really a **base pad** (the grey diamond under an isometric house) counts as a cast shadow and is removed by `remove-cast`.
+- A few stray dots can remain at the very edge of a removed shadow.
 
-On the 102 test pictures: of 10 labelled shadows, 7 found; no false alarms among 16 shadow-free pictures; 64 pictures on white grounds answered "can't tell". On 36 drawn sprites with drawn shadows (four grounds, three shapes, three darknesses), the found shadow overlaps the true one by 91% on average (worst 87%).
+On the 102 test pictures: of 10 labelled shadows, 7 found and all 7 named as labelled (the labels are drafts made by eye); no false alarms among 16 shadow-free pictures; 64 pictures on white grounds answered "can't tell". On 36 drawn sprites with drawn shadows (four grounds, three shapes, three darknesses) the found shadow overlaps the true one by 91% on average (worst 87%), and removal changed no sprite pixel and nothing outside the shadow.
 
 ## How sure is the grid? (clear, weak, none)
 
